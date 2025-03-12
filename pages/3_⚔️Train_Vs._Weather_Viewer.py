@@ -84,7 +84,7 @@ if date_dict:
                             st.dataframe(timetable_df)
 
                             if not timetable_df.empty:
-                                st.subheader("Select an EMS Station ")
+                                st.subheader("Select a Train Track ")
                                 unique_stations = timetable_df["stationName"].sort_values().unique()
 
                                 selected_station = st.selectbox(
