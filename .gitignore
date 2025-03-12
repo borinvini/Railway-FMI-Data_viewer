@@ -1,0 +1,56 @@
+# Python-related files
+__pycache__/
+*.py[cod]
+*.so
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# Streamlit-specific files
+.streamlit/
+
+# Virtual environment
+venv/
+.env
+*.env
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Log files
+*.log
+
+# Data files
+*.csv
+*.json
+*.xlsx
+*.h5
+*.db
+*.sqlite
+*.parquet
+
+# Hidden files
+.DS_Store
+Thumbs.db
+
+# IDE-related files
+.vscode/
+.idea/
+
+# OS-specific files
+*.swp
+*~
+*#
+
+# Cache files
+__pycache__/
+*.pyc
+*.pyo
+
+# MacOS-specific files
+.DS_Store
+.DS_Store?
+
+# Ignore test outputs
+test_output/
