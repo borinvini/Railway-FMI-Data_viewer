@@ -35,30 +35,14 @@ The **Railway-FMI-Data-Viewer** allows users to:
 - Cross-reference train data with real-time weather conditions at nearby EMS stations.  
 - Display data in a clean, interactive format with dynamic charts and tables.  
 
-
-
-
----
-
-##  Project Goal
-
-❯ This project aims to create a unified dataset that merges railway timetable information with weather data, enabling more comprehensive analysis of how weather conditions affect train operations. The data is matched using the Haversine formula to identify the closest weather station to each train track. The train track can be a passanger station, or not.  
-
-The project includes a data processing pipeline that:  
-✔️ Collects data from the APIs.  
-✔️ Merges railway and weather data based on location and time.  
-✔️ Handles missing data and outliers.  
-✔️ Saves the processed data to structured CSV files.  
-
-
 ---
 
 
 ##  Project Roadmap
 
-- [X] **`Task 1`**: <strike>Railway data fetcher.</strike>
-- [X] **`Task 2`**: <strike>FMI Weather data fetcher.</strike>
-- [X] **`Task 3`**: <strike>Railway and weather matched data using haversine.</strike>
+- [ ] **`Task 1`**: Train data viwer.
+- [ ] **`Task 2`**: Weather data viwer.
+- [ ] **`Task 3`**: Merged data viewer.
 
 
 ---
@@ -70,15 +54,14 @@ The project includes a data processing pipeline that:
 ├── config
 │   ├── const.py               # Configuration file for constants and paths
 ├── data                       # Directory to store CSV files (fetched data and output data)
-├── logs                       # Directory for logs
+├── pages                      # Streamlit pages for data visualization
+│   ├── 1_🚂Train_Viewer.py       # Streamlit page for viewing train data
+│   ├── 2_☁️Weather_Viewer.py     # Streamlit page for viewing weather data
+│   ├── 3_⚔️Train_Vs_Weather_Viewer.py # Streamlit page for comparing train and weather data
 ├── src
-│   ├── fetchers               # Fetchers for Railway and FMI data
-│   │   ├── FMI.py             # Class Handler FMI data fetching
-│   │   ├── Railway.py         # Class Handler Railway data fetching
-│   ├── processors             # Data processing logic
-│   │   ├── DataLoader.py      # Class for Loads and processes merged data                
+│   ├── DataViewer.py          # Class for loading and displaying data               
 ├── environment.yml            # Conda environment file
-├── main.py                    # Main script to execute data fetching and processing               
+├── main.py                    # Main script to launch Streamlit app                                   
 ```
 
 
@@ -91,38 +74,6 @@ The project includes a data processing pipeline that:
 ```sh
 ❯ conda venv create -f environment.yml
 ```
-
-## 🚀 Data Fetcher Flag  
-The `DATA_FETCH` flag in `main.py` controls whether the program will **fetch data from the APIs** or **process existing data**.
-
-### 1. **Fetch Data from APIs**  
-To fetch data from the Finnish Railway API and FMI API, set the `DATA_FETCH` flag to `True` in `main.py`:
-
-```python
-# main.py
-DATA_FETCH = True
-```
-
-When `DATA_FETCH` is set to `True`, the program will:
-
-✅ Fetch train data within the specified interval and save it to a CSV.  
-✅ Fetch weather data from the FMI API within the specified interval and save it to a CSV.  
-
-This mode is used to **download fresh data** from the APIs and **store it locally** for further processing.
-
-### 2. Process Existing Data  
-To **process and merge previously fetched data** (without making additional API calls), set the `DATA_FETCH` flag to `False` in `main.py`:
-
-```python
-# main.py
-DATA_FETCH = False
-```
-
-When `DATA_FETCH` is set to `False`, the program will: 
-
-✅ Load data from the locally stored CSV files.  
-✅ Match train timetable data with the closest weather station data using the **Haversine distance** calculation.  
-✅ Merge the matched data into a structured format for analysis.  
 
 ---
 
