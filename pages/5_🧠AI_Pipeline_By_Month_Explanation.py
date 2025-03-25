@@ -88,25 +88,24 @@ def main():
         {
             "title": "9 - Training",
             "description": [
-                "Train the dataset with the target variable for different scenarios:",
-                "• Decision tree",
-                "• Decision tree with important features",
-                "• RandomizedSearchCV",
-                "• RandomizedSearchCV with important features",
-                "• XGBoost",
-                "• XGBoost with RandomizedSearchCV"
+                "Train the dataset with the target variable for different scenarios",
             ]
         }
     ]
 
-   
-    # Display the pipeline steps as simple text items
+    # Display the pipeline steps as simple text items with less spacing
     st.markdown("## AI Pipeline Steps")
     
     for step in steps:
         st.subheader(step["title"])
+        
+        # Option 1: Custom HTML with reduced spacing
+        html_list = '<div style="line-height: 1.2; margin-top: -10px;">'
         for item in step["description"]:
-            st.markdown(f"- {item}")
+            html_list += f'<div style="margin-bottom: 2px;">• {item}</div>'
+        html_list += '</div>'
+        st.markdown(html_list, unsafe_allow_html=True)
+        
         st.markdown("---")  # Add separator line between steps
     
     # Display AI scenarios image at the end
