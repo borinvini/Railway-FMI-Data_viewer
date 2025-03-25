@@ -62,10 +62,11 @@ def find_model_metrics_files():
 
 # Function to extract month-year info from filename
 def extract_date_from_filename(filename):
-    # Expected pattern: feature_importance_YYYY-YYYY_MM.csv or model_metrics_YYYY-YYYY_MM.csv
-    match = re.search(r'(feature_importance|model_metrics)_(\d{4}-\d{4})_(\d{2})\.csv', os.path.basename(filename))
+    # Generalized pattern to extract year-month, ignoring any suffixes
+    # This matches: prefix_YYYY-YYYY_MM_any_suffix.csv and returns just the YYYY-YYYY_MM part
+    match = re.search(r'(?:feature_importance|model_metrics)_(\d{4}-\d{4})_(\d{2})', os.path.basename(filename))
     if match:
-        _, year_range, month = match.groups()
+        year_range, month = match.groups()
         return f"{year_range}_{month}"
     return os.path.basename(filename)
 
