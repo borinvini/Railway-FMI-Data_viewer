@@ -4,6 +4,7 @@ from config.const import CSV_ALL_TRAINS, CSV_FMI, CSV_MATCHED_DATA, VIEWER_FOLDE
 from src.DataViewer import DataViewer
 
 
+
 def ensure_directories():
     """
     Ensure that all required directories for the application exist.
