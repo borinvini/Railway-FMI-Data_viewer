@@ -198,16 +198,33 @@ def main():
             ["All Periods"] + available_periods
         )
         
-        # Feature selection for trend analysis
+        # Feature selection for trend analysis - get top 5 by importance as default
         all_features = sorted(df['Feature'].unique())
+        
+        # Calculate the average importance across all periods for each feature
+        feature_avg_importance = df.groupby('Feature')['Importance'].mean().reset_index()
+        
+        # Sort by importance and get top 5 features (or all if less than 5)
+        top_features = feature_avg_importance.sort_values('Importance', ascending=False)['Feature'].tolist()
+        default_features = top_features[:5] if len(top_features) >= 5 else top_features
+        
         selected_features = st.sidebar.multiselect(
             "Select Features for Trend Analysis",
             all_features,
-            default=all_features[:5] if len(all_features) >= 5 else all_features
+            default=default_features
         )
         
-        # Top N features selection
-        top_n = st.sidebar.slider("Top N Features", min_value=3, max_value=20, value=10)
+        # Top N features selection - IMPROVED CODE HERE
+        total_features = len(all_features)
+        default_value = min(10, total_features)
+        min_value = min(3, total_features)
+        
+        top_n = st.sidebar.slider(
+            "Top N Features", 
+            min_value=min_value, 
+            max_value=total_features,
+            value=default_value
+        )
         
         # Create tabs for different visualizations
         tab1, tab2, tab3 = st.tabs(["Bar Chart", "Heatmap", "Trends"])
@@ -215,6 +232,11 @@ def main():
         with tab1:
             st.subheader("Feature Importance Bar Chart")
             period_for_chart = None if selected_period == "All Periods" else selected_period
+            
+            # Add informational text when "All Periods" is selected
+            if selected_period == "All Periods":
+                st.info("📊 **Note**: When 'All Periods' is selected, the values shown represent the **mean importance** of each feature calculated across all time periods.")
+                
             fig1 = plot_feature_importance(df, period_for_chart, top_n)
             st.pyplot(fig1)
         
