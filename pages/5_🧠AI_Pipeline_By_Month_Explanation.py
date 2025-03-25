@@ -99,10 +99,7 @@ def main():
         }
     ]
 
-    # Display AI scenarios image at the end
-    st.image("assets/ai_scenarios.png", caption="AI Model Training Scenarios")
-
-    
+   
     # Display the pipeline steps as simple text items
     st.markdown("## AI Pipeline Steps")
     
@@ -112,6 +109,9 @@ def main():
             st.markdown(f"- {item}")
         st.markdown("---")  # Add separator line between steps
     
+    # Display AI scenarios image at the end
+    st.image("assets/ai_scenarios.png", caption="AI Model Training Scenarios")
+
     # Add information about model evaluation and results
     st.subheader("Pipeline Outputs")
     st.markdown("""
