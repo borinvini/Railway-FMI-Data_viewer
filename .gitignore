@@ -29,6 +29,8 @@ venv/
 *.db
 *.sqlite
 *.parquet
+*.joblib
+*.txt
 
 # Hidden files
 .DS_Store

@@ -20,7 +20,9 @@ FIN_RAILWAY_ALL_TRAINS = "/trains"
 FIN_RAILWAY_TRAIN_TRACKING = "/train-tracking"
 
 # CSVs
+import os
 FOLDER_NAME = "data"
+VIEWER_FOLDER_NAME = os.path.join(FOLDER_NAME, "viewers")  
 CSV_TRAIN_STATIONS = "train_stations.csv"
 CSV_TRAIN_CATEGORIES = "train_categories.csv"
 CSV_ALL_TRAINS = "all_trains_data.csv"

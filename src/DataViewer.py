@@ -4,7 +4,7 @@ import re
 import pandas as pd
 import streamlit as st
 
-from config.const import CSV_MATCHED_DATA, FOLDER_NAME
+from config.const import CSV_MATCHED_DATA, FOLDER_NAME, VIEWER_FOLDER_NAME
 
 class DataViewer:
     def __init__(self):
@@ -28,7 +28,7 @@ class DataViewer:
         Check if the data folder exists and is not empty.
         Shows a warning in Streamlit if no data is available.
         """
-        if not os.path.exists(FOLDER_NAME) or not os.listdir(FOLDER_NAME):
+        if not os.path.exists(VIEWER_FOLDER_NAME) or not os.listdir(VIEWER_FOLDER_NAME):
             st.warning("⚠️ No data available! Please fetch the data first.")
             return False
         return True
@@ -40,13 +40,13 @@ class DataViewer:
         """
         try:
             matched_files = [
-                file for file in os.listdir(FOLDER_NAME)
+                file for file in os.listdir(VIEWER_FOLDER_NAME)
                 if file.startswith(file_pattern.replace('.csv', '')) and file.endswith('.csv')
             ]
 
             if matched_files:
                 num_files = len(matched_files)
-                total_size = sum(os.path.getsize(os.path.join(FOLDER_NAME, file)) for file in matched_files)
+                total_size = sum(os.path.getsize(os.path.join(VIEWER_FOLDER_NAME, file)) for file in matched_files)
                 total_size_mb = total_size / (1024 * 1024)  # Convert bytes to MB
                 
                 # If size is larger than 1024 MB, display in GB
@@ -69,7 +69,7 @@ class DataViewer:
         """
         try:
             matched_files = [
-                file for file in os.listdir(FOLDER_NAME)
+                file for file in os.listdir(VIEWER_FOLDER_NAME)
                 if re.match(rf"{CSV_MATCHED_DATA.replace('.csv', '')}_(\d{{4}})_(\d{{2}}).csv", file)
             ]
             
@@ -122,12 +122,12 @@ class DataViewer:
         Load a CSV file into a Pandas DataFrame.
         Only displays a warning or error message if something goes wrong.
         """
-        file_path = os.path.join(FOLDER_NAME, file_name)
+        file_path = os.path.join(VIEWER_FOLDER_NAME, file_name)
         try:
             if os.path.exists(file_path):
                 return pd.read_csv(file_path)
             else:
-                st.warning(f"⚠️ File `{file_name}` not found in `{FOLDER_NAME}`.")
+                st.warning(f"⚠️ File `{file_name}` not found in `{VIEWER_FOLDER_NAME}`.")
                 return None
         
         except Exception as e:

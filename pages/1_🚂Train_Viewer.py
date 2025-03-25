@@ -1,5 +1,5 @@
 import streamlit as st
-from config.const import CSV_ALL_TRAINS, FOLDER_NAME
+from config.const import CSV_ALL_TRAINS, VIEWER_FOLDER_NAME
 from src.DataViewer import DataViewer
 import os
 import pandas as pd
@@ -27,7 +27,7 @@ if date_dict:
 
     if selected_year and selected_month:
         file_name = f"{CSV_ALL_TRAINS.replace('.csv', '')}_{selected_year}_{str(selected_month).zfill(2)}.csv"
-        file_path = os.path.join(FOLDER_NAME, file_name)
+        file_path = os.path.join(VIEWER_FOLDER_NAME, file_name)
         
         # Load the CSV file
         if os.path.exists(file_path):
@@ -89,4 +89,4 @@ if date_dict:
                         st.dataframe(timetable_df)
 
         else:
-            st.warning(f"⚠️ File `{file_name}` not found in `{FOLDER_NAME}`.")
+            st.warning(f"⚠️ File `{file_name}` not found in `{VIEWER_FOLDER_NAME}`.")

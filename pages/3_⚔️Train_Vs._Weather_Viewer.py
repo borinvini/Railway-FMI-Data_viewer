@@ -1,5 +1,5 @@
 import streamlit as st
-from config.const import CSV_MATCHED_DATA, FOLDER_NAME
+from config.const import CSV_MATCHED_DATA, VIEWER_FOLDER_NAME
 from src.DataViewer import DataViewer
 import os
 import pandas as pd
@@ -27,7 +27,7 @@ if date_dict:
 
     if selected_year and selected_month:
         file_name = f"{CSV_MATCHED_DATA.replace('.csv', '')}_{selected_year}_{str(selected_month).zfill(2)}.csv"
-        file_path = os.path.join(FOLDER_NAME, file_name)
+        file_path = os.path.join(VIEWER_FOLDER_NAME, file_name)
         
         if os.path.exists(file_path):
             df = pd.read_csv(file_path)
@@ -110,4 +110,4 @@ if date_dict:
                                     else:
                                         st.warning(f"No weather data available for station **{selected_station}**.")
         else:
-            st.warning(f"⚠️ File `{file_name}` not found in `{FOLDER_NAME}`.")
+            st.warning(f"⚠️ File `{file_name}` not found in `{VIEWER_FOLDER_NAME}`.")
