@@ -80,13 +80,13 @@ if mapping_data is not None and not mapping_data.empty:
     st.sidebar.subheader("Map Filters")
     
     # Filter by maximum distance between train station and EMS
-    max_distance = mapping_data['distance_km'].max()
+    max_distance = min(50.0, mapping_data['distance_km'].max())
     selected_max_distance = st.sidebar.slider(
         "Max Distance (km)",
         min_value=0.0,
-        max_value=float(max_distance),
-        value=float(max_distance),
-        step=5.0
+        max_value=50.0,
+        value=max_distance,
+        step=1.0
     )
     
     # Filter the data
