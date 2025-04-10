@@ -30,6 +30,45 @@ Each train station (🚂) is connected to its closest EMS station (☁️) with 
 if not viewer.has_data():
     st.stop()  # Stop execution if no data
 
+# Function to identify stations that measure snow depth
+def identify_snow_depth_measuring_stations(file_name="fmi_weather_observations_2024_11.csv"):
+    """
+    Analyze the weather observations file to identify which stations measure snow depth.
+    
+    Returns:
+        dict: Dictionary with station names as keys and boolean values indicating if they measure snow depth
+    """
+    file_path = os.path.join(VIEWER_FOLDER_NAME, file_name)
+    
+    if not os.path.exists(file_path):
+        st.warning(f"⚠️ File `{file_name}` not found in `{VIEWER_FOLDER_NAME}`.")
+        return {}
+    
+    try:
+        # Load the weather observations
+        df = pd.read_csv(file_path)
+        
+        # Check if "Snow depth" column exists
+        if "Snow depth" not in df.columns:
+            st.warning("⚠️ 'Snow depth' column not found in weather observations file.")
+            return {}
+        
+        # Group by station name and check if any non-empty snow depth value exists
+        snow_depth_stations = {}
+        
+        # For each station, check if it has any non-null snow depth measurements
+        for station in df['station_name'].unique():
+            station_data = df[df['station_name'] == station]
+            # A station measures snow depth if it has at least one non-null value
+            measures_snow = not station_data['Snow depth'].isna().all()
+            snow_depth_stations[station] = measures_snow
+        
+        return snow_depth_stations
+    except Exception as e:
+        st.error(f"❌ Error analyzing snow depth data: {e}")
+        st.exception(e)
+        return {}
+
 # Function to load train-EMS mapping data
 def load_train_ems_mapping():
     """Load the mapping between train stations and their closest EMS stations"""
@@ -64,6 +103,9 @@ def load_ems_data():
         st.exception(e)
         return None
 
+# Load snow depth information
+snow_depth_stations = identify_snow_depth_measuring_stations()
+
 # Load train-EMS mapping data
 mapping_data = load_train_ems_mapping()
 
@@ -76,8 +118,28 @@ if mapping_data is not None and not mapping_data.empty:
     unique_ems_stations = mapping_data.drop_duplicates(subset=['closest_ems_station', 'ems_latitude', 'ems_longitude'])
     st.sidebar.write(f"Unique EMS stations: {len(unique_ems_stations)}")
     
+    # Count EMS stations with snow depth measurements
+    if snow_depth_stations:
+        measuring_stations = sum(1 for station in unique_ems_stations['closest_ems_station'] 
+                                if snow_depth_stations.get(station, False))
+        st.sidebar.write(f"EMS stations measuring snow depth: {measuring_stations}")
+    
     # Add filters
     st.sidebar.subheader("Map Filters")
+    
+    # Option to highlight stations that measure snow depth
+    highlight_snow_stations = st.sidebar.checkbox(
+        "Highlight stations based on snow depth measurement", 
+        value=False
+    )
+    
+    # Show snow depth legend if highlighting is enabled
+    if highlight_snow_stations and snow_depth_stations:
+        st.sidebar.markdown("""
+        **Legend:**
+        - 🟢 Measures snow depth
+        - 🔴 Does not measure snow depth
+        """)
     
     # Filter by maximum distance between train station and EMS
     max_distance = min(50.0, mapping_data['distance_km'].max())
@@ -166,10 +228,26 @@ if mapping_data is not None and not mapping_data.empty:
         ems_key = f"{row['closest_ems_station']}_{ems_lat}_{ems_long}"
         
         if ems_key not in added_ems_stations:
+            # Determine if this station measures snow depth
+            measures_snow = snow_depth_stations.get(row['closest_ems_station'], False)
+            
+            # Determine marker color based on snow depth measurement capability
+            ems_color = "blue"  # Default color
+            
+            if highlight_snow_stations and snow_depth_stations:
+                ems_color = "green" if measures_snow else "red"
+            
+            # Add snow depth information to popup
+            snow_depth_info = ""
+            if snow_depth_stations:
+                snow_depth_status = "Yes" if measures_snow else "No"
+                snow_depth_info = f"<b>Measures Snow Depth:</b> {snow_depth_status}<br>"
+            
             ems_popup_text = f"""
             <div style="width: 300px">
                 <h4>☁️ EMS Station: {row['closest_ems_station']}</h4>
                 <b>Coordinates:</b> {ems_lat:.6f}, {ems_long:.6f}<br>
+                {snow_depth_info}
                 <b>Connected Train Stations:</b> {added_ems_stations.get(ems_key, 0) + 1}<br>
             </div>
             """
@@ -178,7 +256,7 @@ if mapping_data is not None and not mapping_data.empty:
                 location=[ems_lat, ems_long],
                 popup=folium.Popup(ems_popup_text, max_width=300),
                 tooltip=f"☁️ {row['closest_ems_station']}",
-                icon=folium.Icon(color="blue", icon="cloud", prefix="fa")
+                icon=folium.Icon(color=ems_color, icon="cloud", prefix="fa")
             ).add_to(ems_stations_group)
             
             # Mark as added
@@ -205,7 +283,15 @@ if mapping_data is not None and not mapping_data.empty:
     folium.LayerControl().add_to(m)
     
     # Display the count of stations being shown
-    st.write(f"Displaying {len(filtered_data)} train stations and {len(added_ems_stations)} EMS stations")
+    if highlight_snow_stations and snow_depth_stations:
+        # Count stations that measure snow depth
+        snow_measuring_count = sum(1 for station in added_ems_stations.keys() 
+                                 if snow_depth_stations.get(station.split('_')[0], False))
+        
+        st.write(f"Displaying {len(filtered_data)} train stations and {len(added_ems_stations)} EMS stations " +
+                 f"({snow_measuring_count} measure snow depth, {len(added_ems_stations) - snow_measuring_count} do not)")
+    else:
+        st.write(f"Displaying {len(filtered_data)} train stations and {len(added_ems_stations)} EMS stations")
     
     # Display the map using streamlit-folium (full width)
     st_data = st_folium(m, width=None, height=600, returned_objects=[])
@@ -244,6 +330,39 @@ if mapping_data is not None and not mapping_data.empty:
         furthest_pairs = filtered_data.nlargest(5, 'distance_km')
         for _, row in furthest_pairs.iterrows():
             st.write(f"**{row['train_station_name']}** → **{row['closest_ems_station']}**: {row['distance_km']:.2f} km")
+    
+    # Add snow depth statistics if the highlighting is enabled
+    if highlight_snow_stations and snow_depth_stations:
+        st.subheader("Snow Depth Measurement Statistics")
+        
+        # Create a new DataFrame for stations with snow depth measurement info
+        snow_depth_df = pd.DataFrame({
+            "Station": list(added_ems_stations.keys()),
+            "Measures Snow Depth": [snow_depth_stations.get(station.split('_')[0], False) 
+                                   for station in added_ems_stations.keys()]
+        })
+        
+        # Count of stations that measure snow depth
+        snow_measuring_count = snow_depth_df["Measures Snow Depth"].sum()
+        snow_nonmeasuring_count = len(snow_depth_df) - snow_measuring_count
+        
+        # Create a pie chart using Streamlit's columns for layout
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            st.write("**Snow Depth Measurement Capability:**")
+            st.write(f"- Stations measuring snow depth: {snow_measuring_count}")
+            st.write(f"- Stations not measuring snow depth: {snow_nonmeasuring_count}")
+            st.write(f"- Percentage measuring snow depth: {snow_measuring_count/len(snow_depth_df)*100:.1f}%")
+        
+        with col2:
+            # Create a DataFrame for the pie chart
+            pie_data = pd.DataFrame({
+                "Capability": ["Measures Snow Depth", "Does Not Measure Snow Depth"],
+                "Count": [snow_measuring_count, snow_nonmeasuring_count]
+            })
+            pie_data = pie_data.set_index("Capability")
+            st.bar_chart(pie_data)
     
     # Map interaction info
     st.subheader("Map Interaction")
