@@ -17,7 +17,7 @@ st.set_page_config(
 viewer = DataViewer()
 
 # Title and introduction
-st.title("🗺️ Train Stations & Environmental Monitoring Stations Map")
+st.title("🗺️ Train Tracks & EMS Map")
 st.markdown("""
 This map shows train stations in Finland and their corresponding Environmental Monitoring Stations (EMS) from 
 the Finnish Meteorological Institute (FMI). The weather data from these EMS stations is used for analyzing 
@@ -129,7 +129,7 @@ if mapping_data is not None and not mapping_data.empty:
     
     # Option to highlight stations that measure snow depth
     highlight_snow_stations = st.sidebar.checkbox(
-        "Highlight stations based on snow depth measurement", 
+        "Snow depth measurements?", 
         value=False
     )
     

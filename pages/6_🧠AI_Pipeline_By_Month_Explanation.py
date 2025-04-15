@@ -1,4 +1,6 @@
 import streamlit as st
+import pandas as pd
+import os
 
 def main():
     # Page configuration
@@ -10,14 +12,15 @@ def main():
 
     # Title and introduction
     st.title("🤖 AI Pipeline Viewer")
-    st.markdown("### State Machine Workflow for Train Delay and Cancellation Prediction")
+    st.markdown("### Workflow for Train Delay Prediction")
     
     st.info("""
     This pipeline processes train and weather data on a month-by-month basis. 
     Each monthly dataset goes through the entire pipeline independently.
     """)
     
-    # Display pipeline flow image at the beginning
+    # Display pipeline flow image 
+    st.markdown("## Pipeline Flow")
     st.image("assets/pipeline_flow.png", caption="Pipeline Flow Diagram")
     
     # Create steps with detailed descriptions
@@ -97,10 +100,29 @@ def main():
         }
     ]
 
-    # Display the pipeline steps as simple text items with less spacing
+    # Try to locate and load the dataset file for step 7
+    dataset_file = None
+    possible_locations = [
+        "data/ai_results/by_month/preprocessed/preprocessed_data_2023-2024_12.csv",
+        "data/preprocessed_data_2023-2024_12.csv",
+        "data/viewers/preprocessed_data_2023-2024_12.csv",
+        "data/ai_results/preprocessed_data_2023-2024_12.csv",
+        "data/ai_results/by_month/preprocessed_data_2023-2024_12.csv"
+    ]
+    
+    for location in possible_locations:
+        if os.path.exists(location):
+            try:
+                dataset_file = pd.read_csv(location)
+                dataset_path = location
+                break
+            except Exception as e:
+                pass  # Silently continue trying other locations
+
+    # Display the pipeline steps
     st.markdown("## AI Pipeline Steps")
     
-    for step in steps:
+    for i, step in enumerate(steps):
         st.subheader(step["title"])
         
         # Option 1: Custom HTML with reduced spacing
@@ -109,6 +131,25 @@ def main():
             html_list += f'<div style="margin-bottom: 2px;">• {item}</div>'
         html_list += '</div>'
         st.markdown(html_list, unsafe_allow_html=True)
+        
+        # If this is step 7, display the dataset
+        if i == 6:  # Index 6 is step 7
+            if dataset_file is not None:
+                st.success(f"Sample processed dataset from: {dataset_path}")
+                
+                # Define target columns
+                target_cols = [col for col in dataset_file.columns if col in ['differenceInMinutes', 'cancelled', 'trainDelayed', 'relative_differenceInMinutes']]
+                
+                # Define feature columns (all non-target columns)
+                feature_cols = [col for col in dataset_file.columns if col not in target_cols]
+                
+                # Reorder columns to show target columns first
+                reordered_cols = target_cols + feature_cols
+                
+                # Display the sample with reordered columns
+                st.dataframe(dataset_file[reordered_cols].head(10))
+            else:
+                st.warning("⚠️ Dataset file 'preprocessed_data_2023-2024_12.csv' not found")
         
         st.markdown("---")  # Add separator line between steps
     
