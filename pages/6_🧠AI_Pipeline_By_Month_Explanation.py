@@ -159,52 +159,35 @@ def main():
     st.title("🤖 AI Pipeline Viewer")
     st.markdown("### Workflow for Train Delay Prediction")
     
-    st.info("""
-    This pipeline processes train and weather data on a month-by-month basis. 
-    Each monthly dataset goes through the entire pipeline independently.
-    """)
-    
-    # NEW SECTION: Count and display train schedules
-    st.subheader("📊 Training Data Statistics")
-    
-    # Count train schedules in preprocessed files
-    total_train_schedules, file_counts = count_preprocessed_data_lines()
-    
-    # Display results
-    if total_train_schedules > 0:
-        st.markdown(f"""
-        <div style="
-            padding: 10px;
-            border-radius: 5px;
-            background-color: #e6f7ff;
-            color: #000000;
-            border: 1px solid #b8daff;
-            font-size: 16px;
-            ">
-            ✅ <b>Total train schedules used in training: {total_train_schedules:,}</b>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Display breakdown per file in an expander
-        with st.expander("🔍 View schedule count breakdown by month"):
-            for file, count in sorted(file_counts.items()):
-                # Extract month/year info from filename for better display
-                match = re.search(r'(\d{4}-\d{4})_(\d{2})', file)
-                if match:
-                    year_range, month = match.groups()
-                    display_name = f"{year_range}, Month {month}"
-                else:
-                    display_name = file
-                
-                st.write(f"- **{display_name}**: {count:,} schedules")
-                
-            # Add explanation of what a schedule represents
-            st.info("""
-            Each record represents a train schedule entry with associated weather conditions and 
-            delay information. These are used as training examples for the AI models.
-            """)
-    else:
-        st.warning("⚠️ No preprocessed data files found or accessible. Make sure the preprocessing step has been completed.")
+    # Monthly data division highlight
+    st.markdown("""
+    <div style="
+        background-color: #f0f7fb;
+        border-left: 5px solid #2196F3;
+        padding: 10px 15px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+        color: #333333;
+    ">
+        <h3 style="color: #0d47a1; margin-top: 0;">
+            📅 Month-by-Month Data Processing
+        </h3>
+        <p style="color: #333333;">
+            This pipeline <b>divides all train and weather data by calendar months</b> before processing. 
+            Each month is treated as a separate dataset that goes through the entire pipeline independently.
+        </p>
+        <p style="color: #333333;">
+            <b>Why monthly processing?</b>
+        </p>
+        <ul style="color: #333333;">
+            <li>Captures seasonal weather patterns and their impact on train delays</li>
+            <li>Allows for more targeted model training</li>
+            <li>Handles large datasets more efficiently</li>
+            <li>Enables comparative analysis between different months</li>
+        </ul>
+    </div>
+    """
+    , unsafe_allow_html=True)
     
     # Display pipeline flow image 
     st.markdown("## Pipeline Flow")
@@ -235,8 +218,11 @@ def main():
         {
             "title": "3 - Remove Duplicates",
             "description": [
-                "Removes identical duplicate rows"
-            ]
+                "Removes identical duplicate rows",
+                "Improves dataset quality by eliminating redundant entries",
+                "Helps ensure model training uses unique examples"
+            ],
+            "has_stats": True  # Flag to include the statistics here
         },
         {
             "title": "4 - Scale Numeric Columns",
@@ -309,6 +295,9 @@ def main():
     # Display the pipeline steps
     st.markdown("## AI Pipeline Steps")
     
+    # Count train schedules in preprocessed files before displaying steps
+    total_train_schedules, file_counts = count_preprocessed_data_lines()
+    
     for i, step in enumerate(steps):
         st.subheader(step["title"])
         
@@ -318,6 +307,46 @@ def main():
             html_list += f'<div style="margin-bottom: 2px;">• {item}</div>'
         html_list += '</div>'
         st.markdown(html_list, unsafe_allow_html=True)
+        
+        # Add statistics to Step 3 (Remove Duplicates)
+        if "has_stats" in step and step["has_stats"]:
+            st.subheader("📊 Training Data Statistics")
+            
+            # Display results
+            if total_train_schedules > 0:
+                st.markdown(f"""
+                <div style="
+                    padding: 10px;
+                    border-radius: 5px;
+                    background-color: #e6f7ff;
+                    color: #000000;
+                    border: 1px solid #b8daff;
+                    font-size: 16px;
+                    ">
+                    ✅ <b>Total train schedules used in training: {total_train_schedules:,}</b>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Display breakdown per file in an expander
+                with st.expander("🔍 View schedule count breakdown by month"):
+                    for file, count in sorted(file_counts.items()):
+                        # Extract month/year info from filename for better display
+                        match = re.search(r'(\d{4}-\d{4})_(\d{2})', file)
+                        if match:
+                            year_range, month = match.groups()
+                            display_name = f"{year_range}, Month {month}"
+                        else:
+                            display_name = file
+                        
+                        st.write(f"- **{display_name}**: {count:,} schedules")
+                        
+                    # Add explanation of what a schedule represents
+                    st.info("""
+                    Each record represents a train schedule entry with associated weather conditions and 
+                    delay information. These are used as training examples for the AI models.
+                    """)
+            else:
+                st.warning("⚠️ No preprocessed data files found or accessible. Make sure the preprocessing step has been completed.")
         
         # If this is step 7, display the dataset
         if i == 6:  # Index 6 is step 7
@@ -343,25 +372,27 @@ def main():
     # Display AI scenarios image at the end
     st.image("assets/ai_scenarios.png", caption="AI Model Training Scenarios")
 
-    # Add information about model evaluation and results
-    st.subheader("Pipeline Outputs")
+    # FUTURE WORK SECTION
+    st.markdown("## 🗺️ Future Work: Train Station Regional Classification")
     st.markdown("""
-    The pipeline outputs several files for each month:
-    - Processed data CSV files
-    - Train/test split datasets
-    - Model evaluation metrics
-    - Feature importance rankings
+    As part of our planned enhancements, we intend to implement a regional classification of train stations 
+    across Finland. This will allow us to analyze weather impacts and train delays by geographic region.
+    
+    ### Planned Features:
+    
+    - **K-means clustering** of train stations based on geographic coordinates
+    - Division into 4 regions (Northeast, Northwest, Southeast, Southwest)
+    - Region-specific delay analysis and prediction
+    - Weather impact visualization by region
+    - Comparative performance metrics across different regions
+    
+    This geographic classification will help identify region-specific patterns and improve our prediction accuracy
+    by accounting for local weather effects and infrastructure differences.
     """)
     
-    # NEW SECTION: Train Station Regional Classification
-    st.markdown("## 🗺️ Train Station Regional Classification")
-    st.markdown("""
-    To improve our model's performance, we've implemented a regional classification of train stations 
-    across Finland. This allows us to analyze weather impacts and train delays by geographic region.
-    """)
-    
-    # Try to load the train stations data
+    # Try to load the train stations data for mockup visualization
     train_stations_file = "data/viewers/train_stations.csv"
+    mockup_created = False
     
     if os.path.exists(train_stations_file):
         try:
@@ -376,104 +407,24 @@ def main():
                 # Run the clustering algorithm
                 df_stations, cluster_centers, region_mapping = classify_stations_by_region(df_stations)
                 
-                # Display the results in a two-column layout
-                col1, col2 = st.columns([3, 2])
+                # Create visualization mockup
+                st.subheader("Mockup Visualization of Regional Classification")
+                fig = plot_station_regions(df_stations, cluster_centers, region_mapping)
+                st.pyplot(fig)
                 
-                with col1:
-                    # Create and display the visualization
-                    fig = plot_station_regions(df_stations, cluster_centers, region_mapping)
-                    st.pyplot(fig)
+                mockup_created = True
                 
-                with col2:
-                    st.subheader("Region Statistics")
-                    
-                    # Create region statistics
-                    region_stats = df_stations.groupby('region_name').agg(
-                        station_count=('stationName', 'count')
-                    ).reset_index()
-                    
-                    # Add passenger traffic stats if available
-                    if 'passengerTraffic' in df_stations.columns:
-                        try:
-                            # Convert to boolean if it's not already
-                            if df_stations['passengerTraffic'].dtype != bool:
-                                df_stations['passengerTraffic'] = df_stations['passengerTraffic'].astype(str).str.lower() == 'true'
-                            
-                            passenger_stats = df_stations.groupby('region_name').agg(
-                                passenger_stations=('passengerTraffic', lambda x: x.sum())
-                            ).reset_index()
-                            
-                            region_stats = region_stats.merge(passenger_stats, on='region_name')
-                        except Exception as e:
-                            st.warning(f"Could not calculate passenger statistics: {e}")
-                    
-                    # Display the statistics
-                    st.dataframe(region_stats)
-                    
-                    st.markdown("""
-                    ### Classification Method
-                    
-                    The stations are classified using **K-means clustering** on their geographic coordinates.
-                    This approach:
-                    
-                    - Groups stations based on proximity
-                    - Creates natural regional boundaries
-                    - Automatically adapts to the geographic distribution
-                    - Names regions based on their position relative to Finland's center
-                    """)
-                
-                # Display sample of classified data in an expander
-                with st.expander("View Sample of Classified Stations"):
-                    st.dataframe(
-                        df_stations[['stationName', 'stationShortCode', 'latitude', 'longitude', 'region_name']]
-                        .sort_values('region_name')
-                        .head(10)
-                    )
-                
-                # Save the classified data
-                output_path = "data/viewers/train_stations_with_regions.csv"
-                df_stations.to_csv(output_path, index=False)
-                st.success(f"Classification results saved to: {output_path}")
-                
-            else:
-                st.error("Could not find latitude and longitude columns in the train stations CSV file.")
-        
+                # Add explanation
+                st.caption("Example K-means clustering visualization showing how stations will be grouped into regions")
         except Exception as e:
-            st.error(f"Error processing train stations data: {e}")
-            st.exception(e)
-    else:
-        # Try loading from the exact path specified
-        train_stations_file = "data/viewers/train_stations.csv"
-        st.info(f"Loading train stations data directly from {train_stations_file}")
-        
-        try:
-            # Load the train stations data from the specified path
-            sample_df = pd.read_csv(train_stations_file)
-            
-            # Clean up column names
-            sample_df.columns = sample_df.columns.str.strip()
-            
-            st.success(f"Successfully loaded train stations data from {train_stations_file}")
-        except Exception as e:
-            st.error(f"Error loading train stations file from {train_stations_file}: {e}")
-            st.exception(e)
-            return
-        
-        # Clean up column names
-        sample_df.columns = sample_df.columns.str.strip()
-        
-        # Process the sample data
-        sample_df, sample_centers, sample_mapping = classify_stations_by_region(sample_df)
-        
-        # Create and display the visualization for sample data
-        sample_fig = plot_station_regions(sample_df, sample_centers, sample_mapping)
-        st.pyplot(sample_fig)
-        
-        # Display sample processed data
-        st.dataframe(
-            sample_df[['stationName', 'stationShortCode', 'latitude', 'longitude', 'region_name']]
-            .sort_values('region_name')
-        )
+            pass  # Silently continue if there's an error
+    
+    # Display info message
+    st.info("⏳ This feature is currently under development and will be available in a future update.")
+    
+    # If mockup wasn't created, explain why
+    if not mockup_created:
+        st.write("The visualization mockup will show train stations clustered into four geographic regions across Finland.")
 
 if __name__ == "__main__":
     main()
