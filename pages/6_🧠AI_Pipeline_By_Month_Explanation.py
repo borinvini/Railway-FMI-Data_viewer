@@ -1,6 +1,47 @@
 import streamlit as st
 import pandas as pd
 import os
+import re
+
+def count_preprocessed_data_lines():
+    """
+    Count the number of rows (train schedules) in all preprocessed CSV files.
+    Returns:
+        tuple: (total_count, file_counts) where file_counts is a dictionary with filename as key and row count as value
+    """
+    preprocessed_dir = "data/ai_results/by_month/preprocessed"
+    
+    # Check if directory exists
+    if not os.path.exists(preprocessed_dir):
+        st.warning(f"Directory '{preprocessed_dir}' not found.")
+        return 0, {}
+    
+    # Find all CSV files in the directory
+    csv_files = [f for f in os.listdir(preprocessed_dir) if f.endswith('.csv')]
+    
+    if not csv_files:
+        st.warning(f"No CSV files found in '{preprocessed_dir}'.")
+        return 0, {}
+    
+    total_count = 0
+    file_counts = {}
+    
+    # Count rows in each file
+    for csv_file in csv_files:
+        file_path = os.path.join(preprocessed_dir, csv_file)
+        try:
+            # Use pandas to read and count rows
+            df = pd.read_csv(file_path)
+            row_count = len(df)
+            
+            if row_count > 0:
+                file_counts[csv_file] = row_count
+                total_count += row_count
+        except Exception as e:
+            # If there's an error reading the file, log it but continue
+            st.error(f"Error reading {file_path}: {e}")
+    
+    return total_count, file_counts
 
 def main():
     # Page configuration
@@ -18,6 +59,48 @@ def main():
     This pipeline processes train and weather data on a month-by-month basis. 
     Each monthly dataset goes through the entire pipeline independently.
     """)
+    
+    # NEW SECTION: Count and display train schedules
+    st.subheader("📊 Training Data Statistics")
+    
+    # Count train schedules in preprocessed files
+    total_train_schedules, file_counts = count_preprocessed_data_lines()
+    
+    # Display results
+    if total_train_schedules > 0:
+        st.markdown(f"""
+        <div style="
+            padding: 10px;
+            border-radius: 5px;
+            background-color: #e6f7ff;
+            color: #000000;
+            border: 1px solid #b8daff;
+            font-size: 16px;
+            ">
+            ✅ <b>Total train schedules used in training: {total_train_schedules:,}</b>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Display breakdown per file in an expander
+        with st.expander("🔍 View schedule count breakdown by month"):
+            for file, count in sorted(file_counts.items()):
+                # Extract month/year info from filename for better display
+                match = re.search(r'(\d{4}-\d{4})_(\d{2})', file)
+                if match:
+                    year_range, month = match.groups()
+                    display_name = f"{year_range}, Month {month}"
+                else:
+                    display_name = file
+                
+                st.write(f"- **{display_name}**: {count:,} schedules")
+                
+            # Add explanation of what a schedule represents
+            st.info("""
+            Each record represents a train schedule entry with associated weather conditions and 
+            delay information. These are used as training examples for the AI models.
+            """)
+    else:
+        st.warning("⚠️ No preprocessed data files found or accessible. Make sure the preprocessing step has been completed.")
     
     # Display pipeline flow image 
     st.markdown("## Pipeline Flow")
