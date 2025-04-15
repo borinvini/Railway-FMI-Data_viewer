@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import os
 import re
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 def count_preprocessed_data_lines():
     """
@@ -42,6 +46,106 @@ def count_preprocessed_data_lines():
             st.error(f"Error reading {file_path}: {e}")
     
     return total_count, file_counts
+
+def classify_stations_by_region(df):
+    """
+    Classify train stations into 4 regions using K-means clustering.
+    
+    Args:
+        df: DataFrame containing train station data with latitude and longitude columns
+    
+    Returns:
+        DataFrame with region and region_name columns added
+    """
+    # Extract the coordinates for clustering
+    coords = df[['latitude', 'longitude']].copy()
+    
+    # Standardize the coordinates to give equal weight to latitude and longitude
+    scaler = StandardScaler()
+    coords_scaled = scaler.fit_transform(coords)
+    
+    # Apply K-means clustering with 4 clusters
+    kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
+    df['region'] = kmeans.fit_predict(coords_scaled)
+    
+    # Map the numeric clusters to named regions for better interpretability
+    # Let's assign names based on general geographic position
+    cluster_centers = scaler.inverse_transform(kmeans.cluster_centers_)
+    cluster_info = pd.DataFrame(cluster_centers, columns=['center_lat', 'center_long'])
+    
+    # Determine directional position of clusters for naming
+    mean_lat = cluster_info['center_lat'].mean()
+    mean_long = cluster_info['center_long'].mean()
+    
+    # Create region names based on position relative to center
+    region_names = []
+    for _, row in cluster_info.iterrows():
+        if row['center_lat'] >= mean_lat:
+            if row['center_long'] >= mean_long:
+                region_names.append("Northeast")
+            else:
+                region_names.append("Northwest")
+        else:
+            if row['center_long'] >= mean_long:
+                region_names.append("Southeast")
+            else:
+                region_names.append("Southwest")
+    
+    # Create mapping dictionary
+    region_mapping = {i: name for i, name in enumerate(region_names)}
+    
+    # Add named region column
+    df['region_name'] = df['region'].map(region_mapping)
+    
+    return df, cluster_centers, region_mapping
+
+def plot_station_regions(df, cluster_centers, region_mapping):
+    """
+    Create a visualization of train stations colored by region.
+    
+    Args:
+        df: DataFrame with region assignments
+        cluster_centers: Array of cluster center coordinates
+        region_mapping: Dictionary mapping region indices to region names
+    
+    Returns:
+        matplotlib figure
+    """
+    fig, ax = plt.subplots(figsize=(10, 8))
+    colors = ['red', 'blue', 'green', 'purple']
+    markers = ['o', 's', '^', 'D']
+    
+    for region in range(4):
+        region_data = df[df['region'] == region]
+        ax.scatter(
+            region_data['longitude'],
+            region_data['latitude'],
+            c=colors[region],
+            marker=markers[region],
+            label=f"{region_mapping[region]} ({len(region_data)} stations)",
+            alpha=0.7,
+            s=100
+        )
+    
+    # Plot the cluster centers
+    for i, (lat, long) in enumerate(cluster_centers):
+        ax.scatter(
+            long, lat, 
+            c='black', 
+            marker='X', 
+            s=200, 
+            edgecolor='w', 
+            linewidth=2,
+            label=f"Center {region_mapping[i]}" if i == 0 else None
+        )
+    
+    ax.set_title('Finnish Train Stations Divided into 4 Regions')
+    ax.set_xlabel('Longitude')
+    ax.set_ylabel('Latitude')
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    
+    return fig
 
 def main():
     # Page configuration
@@ -249,5 +353,127 @@ def main():
     - Feature importance rankings
     """)
     
+    # NEW SECTION: Train Station Regional Classification
+    st.markdown("## 🗺️ Train Station Regional Classification")
+    st.markdown("""
+    To improve our model's performance, we've implemented a regional classification of train stations 
+    across Finland. This allows us to analyze weather impacts and train delays by geographic region.
+    """)
+    
+    # Try to load the train stations data
+    train_stations_file = "data/viewers/train_stations.csv"
+    
+    if os.path.exists(train_stations_file):
+        try:
+            # Load the train stations data
+            df_stations = pd.read_csv(train_stations_file)
+            
+            # Clean up column names in case there's whitespace
+            df_stations.columns = df_stations.columns.str.strip()
+            
+            # Check if the necessary columns exist
+            if 'latitude' in df_stations.columns and 'longitude' in df_stations.columns:
+                # Run the clustering algorithm
+                df_stations, cluster_centers, region_mapping = classify_stations_by_region(df_stations)
+                
+                # Display the results in a two-column layout
+                col1, col2 = st.columns([3, 2])
+                
+                with col1:
+                    # Create and display the visualization
+                    fig = plot_station_regions(df_stations, cluster_centers, region_mapping)
+                    st.pyplot(fig)
+                
+                with col2:
+                    st.subheader("Region Statistics")
+                    
+                    # Create region statistics
+                    region_stats = df_stations.groupby('region_name').agg(
+                        station_count=('stationName', 'count')
+                    ).reset_index()
+                    
+                    # Add passenger traffic stats if available
+                    if 'passengerTraffic' in df_stations.columns:
+                        try:
+                            # Convert to boolean if it's not already
+                            if df_stations['passengerTraffic'].dtype != bool:
+                                df_stations['passengerTraffic'] = df_stations['passengerTraffic'].astype(str).str.lower() == 'true'
+                            
+                            passenger_stats = df_stations.groupby('region_name').agg(
+                                passenger_stations=('passengerTraffic', lambda x: x.sum())
+                            ).reset_index()
+                            
+                            region_stats = region_stats.merge(passenger_stats, on='region_name')
+                        except Exception as e:
+                            st.warning(f"Could not calculate passenger statistics: {e}")
+                    
+                    # Display the statistics
+                    st.dataframe(region_stats)
+                    
+                    st.markdown("""
+                    ### Classification Method
+                    
+                    The stations are classified using **K-means clustering** on their geographic coordinates.
+                    This approach:
+                    
+                    - Groups stations based on proximity
+                    - Creates natural regional boundaries
+                    - Automatically adapts to the geographic distribution
+                    - Names regions based on their position relative to Finland's center
+                    """)
+                
+                # Display sample of classified data in an expander
+                with st.expander("View Sample of Classified Stations"):
+                    st.dataframe(
+                        df_stations[['stationName', 'stationShortCode', 'latitude', 'longitude', 'region_name']]
+                        .sort_values('region_name')
+                        .head(10)
+                    )
+                
+                # Save the classified data
+                output_path = "data/viewers/train_stations_with_regions.csv"
+                df_stations.to_csv(output_path, index=False)
+                st.success(f"Classification results saved to: {output_path}")
+                
+            else:
+                st.error("Could not find latitude and longitude columns in the train stations CSV file.")
+        
+        except Exception as e:
+            st.error(f"Error processing train stations data: {e}")
+            st.exception(e)
+    else:
+        # Try loading from the exact path specified
+        train_stations_file = "data/viewers/train_stations.csv"
+        st.info(f"Loading train stations data directly from {train_stations_file}")
+        
+        try:
+            # Load the train stations data from the specified path
+            sample_df = pd.read_csv(train_stations_file)
+            
+            # Clean up column names
+            sample_df.columns = sample_df.columns.str.strip()
+            
+            st.success(f"Successfully loaded train stations data from {train_stations_file}")
+        except Exception as e:
+            st.error(f"Error loading train stations file from {train_stations_file}: {e}")
+            st.exception(e)
+            return
+        
+        # Clean up column names
+        sample_df.columns = sample_df.columns.str.strip()
+        
+        # Process the sample data
+        sample_df, sample_centers, sample_mapping = classify_stations_by_region(sample_df)
+        
+        # Create and display the visualization for sample data
+        sample_fig = plot_station_regions(sample_df, sample_centers, sample_mapping)
+        st.pyplot(sample_fig)
+        
+        # Display sample processed data
+        st.dataframe(
+            sample_df[['stationName', 'stationShortCode', 'latitude', 'longitude', 'region_name']]
+            .sort_values('region_name')
+        )
+
 if __name__ == "__main__":
     main()
