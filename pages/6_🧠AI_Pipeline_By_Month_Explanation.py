@@ -27,7 +27,8 @@ def main():
             "description": [
                 "Loads the CSV file",
                 "Extracts nested data from \"timeTableRows\" column",
-                "Keeps only relevant columns (differenceInMinutes, cancelled, weather_conditions)",
+                "Calculates relative_differenceInMinutes based on delay differences between stops",
+                "Keeps relevant columns (differenceInMinutes, relative_differenceInMinutes, cancelled, weather_conditions, trainStopping, commercialStop)",
                 "Expands weather_conditions into separate columns"
             ]
         },
@@ -36,7 +37,9 @@ def main():
             "description": [
                 "Drops rows with missing values in required columns (differenceInMinutes, cancelled)",
                 "Drops rows only if ALL important weather conditions are missing",
-                "Keeps rows with at least one weather condition present"
+                "Keeps rows with at least one weather condition present",
+                "Uses zero imputation for precipitation and snow metrics",
+                "Uses median imputation for temperature, humidity, and other continuous variables"
             ]
         },
         {
@@ -49,12 +52,12 @@ def main():
             "title": "4 - Scale Numeric Columns",
             "description": [
                 "Identifies all numeric columns in the dataframe",
-                "Excludes \"differenceInMinutes\" from scaling (a target variable)",
+                "Excludes target variables (differenceInMinutes, relative_differenceInMinutes) and boolean features (trainStopping, commercialStop)",
                 "Uses StandardScaler to standardize the remaining numeric columns (removes mean, scales to unit variance)"
             ]
         },
         {
-            "title": "5 - Add Train Delayed Feature",
+            "title": "5 - (OPTIONAL) Add Train Delayed Feature",
             "description": [
                 "Creates a new binary column 'trainDelayed' based on differenceInMinutes",
                 "Sets trainDelayed to True when differenceInMinutes > 0 (train is delayed)"
@@ -63,9 +66,9 @@ def main():
         {
             "title": "6 - Select Target Variable",
             "description": [
-                "Accepts a target_feature parameter (one of 'differenceInMinutes', 'trainDelayed', or 'cancelled')",
+                "Accepts a target_feature parameter (one of 'differenceInMinutes', 'relative_differenceInMinutes', 'trainDelayed', or 'cancelled')",
                 "Identifies if the specified target feature exists in the dataframe",
-                "Drops the other two target options while keeping the selected one"
+                "Drops the other target options while keeping the selected one"
             ]
         },
         {
@@ -88,7 +91,8 @@ def main():
         {
             "title": "9 - Training",
             "description": [
-                "Train the dataset with the target variable for different scenarios",
+                "Train the dataset with the target variable for multiple model training approaches",
+                "For regression: uses custom weighted loss functions to focus more on larger magnitude values"
             ]
         }
     ]
