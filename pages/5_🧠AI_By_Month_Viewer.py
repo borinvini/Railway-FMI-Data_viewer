@@ -38,7 +38,7 @@ def find_feature_importance_files():
     
     return result
 
-# Function to search for model metrics files
+# Function to search for model metrics files - UPDATED to handle model_metrics*.csv
 def find_model_metrics_files():
     base_path = "data/ai_results/by_month"
     result = {}
@@ -50,10 +50,10 @@ def find_model_metrics_files():
     # Get all subdirectories (model types)
     model_dirs = [d for d in os.listdir(base_path) if os.path.isdir(os.path.join(base_path, d))]
     
-    # For each model directory, find all model_metrics_*.csv files
+    # For each model directory, find all model_metrics*.csv files (removed underscore to be more flexible)
     for model_dir in model_dirs:
         model_path = os.path.join(base_path, model_dir)
-        metrics_files = glob.glob(os.path.join(model_path, "model_metrics_*.csv"))
+        metrics_files = glob.glob(os.path.join(model_path, "model_metrics*.csv"))
         
         if metrics_files:
             result[model_dir] = sorted(metrics_files)
@@ -64,7 +64,7 @@ def find_model_metrics_files():
 def extract_date_from_filename(filename):
     # Generalized pattern to extract year-month, ignoring any suffixes
     # This matches: prefix_YYYY-YYYY_MM_any_suffix.csv and returns just the YYYY-YYYY_MM part
-    match = re.search(r'(?:feature_importance|model_metrics)_(\d{4}-\d{4})_(\d{2})', os.path.basename(filename))
+    match = re.search(r'(?:feature_importance|model_metrics)_?(\d{4}-\d{4})_(\d{2})', os.path.basename(filename))
     if match:
         year_range, month = match.groups()
         return f"{year_range}_{month}"
@@ -87,21 +87,26 @@ def load_feature_importance_data(file_paths):
         return pd.concat(all_data, ignore_index=True)
     return pd.DataFrame()
 
-# Function to read and combine all model metrics data
+# UPDATED: Function to read and combine all model metrics data - Focus only on r2
 def load_model_metrics_data(file_paths):
     all_data = []
     
     for file_path in file_paths:
         try:
             df = pd.read_csv(file_path)
-            # For model metrics, we need to reshape to long format
             date_label = extract_date_from_filename(file_path)
             
-            # Convert wide format to long format for easier plotting
-            df_long = pd.melt(df, var_name='Metric', value_name='Value')
-            df_long['Period'] = date_label
-            
-            all_data.append(df_long)
+            # Check if r2 exists in the columns
+            if 'r2' in df.columns:
+                # Create a dataframe with just the r2 metric
+                r2_df = pd.DataFrame({
+                    'Metric': ['r2'],
+                    'Value': [df['r2'].iloc[0]],
+                    'Period': [date_label]
+                })
+                all_data.append(r2_df)
+            else:
+                st.warning(f"No r2 metric found in {file_path}")
         except Exception as e:
             st.warning(f"Error reading {file_path}: {e}")
     
@@ -203,31 +208,27 @@ def plot_feature_importance_trends(df, selected_features):
     plt.tight_layout()
     return fig
 
-# Function to plot model metrics comparison for a specific period
-def plot_model_metrics_comparison(df, period=None, metrics=None):
+# UPDATED: Function to plot model metrics comparison for a specific period - Focus only on r2
+def plot_model_metrics_comparison(df, period=None):
     if period:
         df_plot = df[df['Period'] == period]
     else:
         # If no period specified, take average across all periods
         df_plot = df.groupby('Metric')['Value'].mean().reset_index()
     
-    # Filter for selected metrics if specified
-    if metrics and len(metrics) > 0:
-        df_plot = df_plot[df_plot['Metric'].isin(metrics)]
-    
-    # Sort by metric name for consistent display
-    df_plot = df_plot.sort_values('Value', ascending=False)
+    # Ensure we're only plotting r2
+    df_plot = df_plot[df_plot['Metric'] == 'r2']
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(12, 6))
     bars = ax.barh(df_plot['Metric'], df_plot['Value'])
     
-    # Add a color gradient - use a different color scheme than feature importance
-    for i, bar in enumerate(bars):
-        bar.set_color(plt.cm.plasma(i/len(bars)))
+    # Add color to bars
+    for bar in bars:
+        bar.set_color('#1f77b4')  # Set a single color for r2
     
-    ax.set_xlabel('Value')
-    ax.set_title(f'Model Metrics' + (f' - {period}' if period else ' (Average across all periods)'))
+    ax.set_xlabel('R² Value')
+    ax.set_title(f'Model R² Score' + (f' - {period}' if period else ' (Average across all periods)'))
     
     # Add values on bars
     for i, v in enumerate(df_plot['Value']):
@@ -239,25 +240,22 @@ def plot_model_metrics_comparison(df, period=None, metrics=None):
     plt.tight_layout()
     return fig
 
-# Function to create a heatmap of model metrics across time periods
-def plot_model_metrics_heatmap(df, selected_metrics=None):
-    # Filter for selected metrics if specified
-    if selected_metrics and len(selected_metrics) > 0:
-        df_plot = df[df['Metric'].isin(selected_metrics)]
-    else:
-        df_plot = df
+# UPDATED: Function to create a heatmap of model metrics across time periods - Focus only on r2
+def plot_model_metrics_heatmap(df):
+    # Filter to include only r2
+    df_plot = df[df['Metric'] == 'r2']
     
     # Pivot the data to get metrics as rows and periods as columns
     pivot_df = df_plot.pivot_table(index='Metric', columns='Period', values='Value')
     
-    # Create a custom colormap - use a different color scheme
+    # Create a custom colormap
     colors = ["#fff7fb", "#8e0152"]  # Light purple to dark purple
     cmap = LinearSegmentedColormap.from_list("custom_purple", colors, N=100)
     
     # Create the heatmap
-    fig, ax = plt.subplots(figsize=(12, max(8, len(pivot_df) * 0.4)))
+    fig, ax = plt.subplots(figsize=(12, 3))  # Reduced height since we only have one metric
     sns.heatmap(pivot_df, cmap=cmap, annot=True, fmt=".3f", linewidths=.5, ax=ax, vmin=0, vmax=1)
-    ax.set_title('Model Metrics Over Time')
+    ax.set_title('R² Score Over Time')
     ax.set_ylabel('Metric')
     ax.set_xlabel('Time Period')
     
@@ -267,32 +265,24 @@ def plot_model_metrics_heatmap(df, selected_metrics=None):
     plt.tight_layout()
     return fig
 
-# Function to create a line chart showing how model metrics change over time
-def plot_model_metrics_trends(df, selected_metrics):
-    if not selected_metrics:
-        st.warning("Please select at least one metric to view trends.")
-        return None
-    
-    # Filter for selected metrics
-    df_plot = df[df['Metric'].isin(selected_metrics)]
-    
-    # Create a wide-format DataFrame for plotting
-    pivot_df = df_plot.pivot_table(index='Period', columns='Metric', values='Value')
+# UPDATED: Function to create a line chart showing how model metrics change over time - Focus only on r2
+def plot_model_metrics_trends(df):
+    # Filter to include only r2
+    df_plot = df[df['Metric'] == 'r2']
     
     # Sort the periods chronologically
+    pivot_df = df_plot.pivot_table(index='Period', columns='Metric', values='Value')
     periods = sorted(pivot_df.index.tolist())
     pivot_df = pivot_df.loc[periods]
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(12, 6))
     
-    for metric in selected_metrics:
-        if metric in pivot_df.columns:
-            ax.plot(pivot_df.index, pivot_df[metric], marker='o', label=metric)
+    ax.plot(pivot_df.index, pivot_df['r2'], marker='o', label='R² Score', color='#1f77b4', linewidth=2)
     
     ax.set_xlabel('Time Period')
-    ax.set_ylabel('Value')
-    ax.set_title('Model Metrics Trends Over Time')
+    ax.set_ylabel('R² Value')
+    ax.set_title('R² Score Trend Over Time')
     ax.legend(loc='best')
     ax.grid(True, alpha=0.3)
     
@@ -435,6 +425,7 @@ def main():
             # Show basic information
             st.header(f"Model Metrics Analysis: {selected_model}")
             st.write(f"Found {len(file_paths)} model metrics files")
+            st.info("📊 **Note**: This view is showing only the R² Score (r2) metric which measures how well the model fits the data (0-1, where 1 is perfect).")
             
             # Filter options
             st.sidebar.header("Filter Options")
@@ -446,66 +437,30 @@ def main():
                 ["All Periods"] + available_periods
             )
             
-            # Metric selection for analysis
-            all_metrics = sorted(df['Metric'].unique())
-            
-            # Group metrics by type for easier selection
-            accuracy_metrics = [m for m in all_metrics if 'accuracy' in m.lower()]
-            f1_metrics = [m for m in all_metrics if 'f1' in m.lower()]
-            precision_metrics = [m for m in all_metrics if 'precision' in m.lower()]
-            recall_metrics = [m for m in all_metrics if 'recall' in m.lower()]
-            
-            # Default metrics for selection
-            main_metrics = ['accuracy', 'weighted_avg_f1', 'macro_avg_f1']
-            default_metrics = [m for m in main_metrics if m in all_metrics]
-            
-            # Metric selection widget
-            metric_categories = {
-                "Main Metrics": [m for m in main_metrics if m in all_metrics],
-                "Accuracy Metrics": accuracy_metrics,
-                "F1 Metrics": f1_metrics,
-                "Precision Metrics": precision_metrics,
-                "Recall Metrics": recall_metrics
-            }
-            
-            # Create a multi-select for each category
-            selected_metrics = []
-            for category, metrics in metric_categories.items():
-                if metrics:
-                    category_metrics = st.sidebar.multiselect(
-                        f"Select {category}",
-                        metrics,
-                        default=metrics if category == "Main Metrics" else []
-                    )
-                    selected_metrics.extend(category_metrics)
-            
             # Create tabs for different visualizations
             tab1, tab2, tab3 = st.tabs(["Bar Chart", "Heatmap", "Trends"])
             
             with tab1:
-                st.subheader("Model Metrics Comparison")
+                st.subheader("R² Score Comparison")
                 period_for_chart = None if selected_period == "All Periods" else selected_period
                 
                 # Add informational text when "All Periods" is selected
                 if selected_period == "All Periods":
-                    st.info("📊 **Note**: When 'All Periods' is selected, the values shown represent the **mean value** of each metric calculated across all time periods.")
+                    st.info("📊 **Note**: When 'All Periods' is selected, the value shown represents the **mean R² score** calculated across all time periods.")
                 
-                fig1 = plot_model_metrics_comparison(df, period_for_chart, selected_metrics if selected_metrics else None)
+                fig1 = plot_model_metrics_comparison(df, period_for_chart)
                 st.pyplot(fig1)
             
             with tab2:
-                st.subheader("Model Metrics Heatmap")
-                fig2 = plot_model_metrics_heatmap(df, selected_metrics if selected_metrics else None)
+                st.subheader("R² Score Heatmap")
+                fig2 = plot_model_metrics_heatmap(df)
                 st.pyplot(fig2)
             
             with tab3:
-                st.subheader("Model Metrics Trends")
-                if selected_metrics:
-                    fig3 = plot_model_metrics_trends(df, selected_metrics)
-                    if fig3:
-                        st.pyplot(fig3)
-                else:
-                    st.warning("Please select at least one metric in the sidebar to view trends.")
+                st.subheader("R² Score Trends")
+                fig3 = plot_model_metrics_trends(df)
+                if fig3:
+                    st.pyplot(fig3)
             
             # Show raw data
             with st.expander("View Raw Data"):
