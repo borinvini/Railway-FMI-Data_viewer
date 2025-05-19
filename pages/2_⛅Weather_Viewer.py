@@ -27,7 +27,8 @@ if date_dict:
 
     if selected_year and selected_month:
         file_name = f"{CSV_FMI.replace('.csv', '')}_{selected_year}_{str(selected_month).zfill(2)}.csv"
-        file_path = os.path.join(VIEWER_FOLDER_NAME, file_name)
+        # Updated path to include the weather_data subdirectory
+        file_path = os.path.join(VIEWER_FOLDER_NAME, "weather_data", file_name)
         
         # Load the CSV file
         if os.path.exists(file_path):
@@ -68,4 +69,4 @@ if date_dict:
                         st.dataframe(station_data)
 
         else:
-            st.warning(f"⚠️ File `{file_name}` not found in `{VIEWER_FOLDER_NAME}`.")
+            st.warning(f"⚠️ File `{file_name}` not found in `{os.path.join(VIEWER_FOLDER_NAME, 'weather_data')}`.")
