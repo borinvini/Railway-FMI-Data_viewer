@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
+from config.const import VIEWER_FOLDER_NAME
+
 def count_preprocessed_data_lines():
     """
     Count the number of rows (train schedules) in all preprocessed CSV files.
@@ -388,7 +390,7 @@ def main():
     """)
     
     # Try to load the train stations data for mockup visualization
-    train_stations_file = "data/viewers/train_stations.csv"
+    train_stations_file = os.path.join(VIEWER_FOLDER_NAME, "metadata", "train_stations.csv")
     mockup_created = False
     
     if os.path.exists(train_stations_file):

@@ -38,10 +38,10 @@ def identify_snow_depth_measuring_stations(file_name="fmi_weather_observations_2
     Returns:
         dict: Dictionary with station names as keys and boolean values indicating if they measure snow depth
     """
-    file_path = os.path.join(VIEWER_FOLDER_NAME, file_name)
+    file_path = os.path.join(VIEWER_FOLDER_NAME, "weather_data", file_name)
     
     if not os.path.exists(file_path):
-        st.warning(f"⚠️ File `{file_name}` not found in `{VIEWER_FOLDER_NAME}`.")
+        st.warning(f"⚠️ File `{file_name}` not found in `{os.path.join(VIEWER_FOLDER_NAME, 'weather_data')}`.")
         return {}
     
     try:
@@ -72,10 +72,10 @@ def identify_snow_depth_measuring_stations(file_name="fmi_weather_observations_2
 # Function to load train-EMS mapping data
 def load_train_ems_mapping():
     """Load the mapping between train stations and their closest EMS stations"""
-    file_path = os.path.join(VIEWER_FOLDER_NAME, CSV_CLOSEST_EMS_TRAIN)
+    file_path = os.path.join(VIEWER_FOLDER_NAME, "metadata", CSV_CLOSEST_EMS_TRAIN)
     
     if not os.path.exists(file_path):
-        st.error(f"⚠️ File `{CSV_CLOSEST_EMS_TRAIN}` not found in `{VIEWER_FOLDER_NAME}`.")
+        st.error(f"⚠️ File `{CSV_CLOSEST_EMS_TRAIN}` not found in `{os.path.join(VIEWER_FOLDER_NAME, 'metadata')}`.")
         return None
     
     try:
@@ -89,10 +89,10 @@ def load_train_ems_mapping():
 # Function to load EMS data (can be used as a fallback)
 def load_ems_data():
     """Load the EMS stations data from CSV file"""
-    file_path = os.path.join(VIEWER_FOLDER_NAME, CSV_FMI_EMS)
+    file_path = os.path.join(VIEWER_FOLDER_NAME, "metadata", CSV_FMI_EMS)
     
     if not os.path.exists(file_path):
-        st.error(f"⚠️ File `{CSV_FMI_EMS}` not found in `{VIEWER_FOLDER_NAME}`.")
+        st.error(f"⚠️ File `{CSV_FMI_EMS}` not found in `{os.path.join(VIEWER_FOLDER_NAME, 'metadata')}`.")
         return None
     
     try:

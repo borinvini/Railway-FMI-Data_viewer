@@ -27,7 +27,7 @@ if date_dict:
 
     if selected_year and selected_month:
         file_name = f"{CSV_MATCHED_DATA.replace('.csv', '')}_{selected_year}_{str(selected_month).zfill(2)}.csv"
-        file_path = os.path.join(VIEWER_FOLDER_NAME, file_name)
+        file_path = os.path.join(VIEWER_FOLDER_NAME, "matched_data", file_name)
         
         if os.path.exists(file_path):
             df = pd.read_csv(file_path)

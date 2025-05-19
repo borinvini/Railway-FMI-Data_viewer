@@ -33,20 +33,32 @@ class DataViewer:
             return False
         return True
     
-    def check_file_pattern(self, file_pattern):
+    def check_file_pattern(self, file_pattern, subfolder=None):
         """
         Check if there are files matching the specified pattern in the data folder.
         Shows the number of files and the total size in MB or GB in Streamlit.
+        
+        Args:
+            file_pattern: The pattern to match files against
+            subfolder: Optional subfolder within VIEWER_FOLDER_NAME to search in
         """
         try:
+            search_dir = VIEWER_FOLDER_NAME
+            if subfolder:
+                search_dir = os.path.join(VIEWER_FOLDER_NAME, subfolder)
+                
+            if not os.path.exists(search_dir):
+                st.warning(f"⚠️ Directory {search_dir} does not exist.")
+                return
+                
             matched_files = [
-                file for file in os.listdir(VIEWER_FOLDER_NAME)
+                file for file in os.listdir(search_dir)
                 if file.startswith(file_pattern.replace('.csv', '')) and file.endswith('.csv')
             ]
 
             if matched_files:
                 num_files = len(matched_files)
-                total_size = sum(os.path.getsize(os.path.join(VIEWER_FOLDER_NAME, file)) for file in matched_files)
+                total_size = sum(os.path.getsize(os.path.join(search_dir, file)) for file in matched_files)
                 total_size_mb = total_size / (1024 * 1024)  # Convert bytes to MB
                 
                 # If size is larger than 1024 MB, display in GB
@@ -56,7 +68,7 @@ class DataViewer:
                 else:
                     st.success(f"✅ Found **{num_files}** files matching `{file_pattern}` with total size of **{total_size_mb:.2f} MB**.")
             else:
-                st.warning(f"⚠️ No files found matching `{file_pattern}`.")
+                st.warning(f"⚠️ No files found matching `{file_pattern}` in {search_dir}.")
         
         except Exception as e:
             st.error(f"❌ Error while checking file pattern: {e}")
@@ -68,8 +80,15 @@ class DataViewer:
         Shows the date range in Streamlit if files are found, otherwise shows a warning.
         """
         try:
+            # Look in matched_data subfolder for consistency
+            matched_data_dir = os.path.join(VIEWER_FOLDER_NAME, "matched_data")
+            
+            if not os.path.exists(matched_data_dir):
+                st.warning(f"⚠️ Directory '{matched_data_dir}' does not exist.")
+                return None, None
+                
             matched_files = [
-                file for file in os.listdir(VIEWER_FOLDER_NAME)
+                file for file in os.listdir(matched_data_dir)
                 if re.match(rf"{CSV_MATCHED_DATA.replace('.csv', '')}_(\d{{4}})_(\d{{2}}).csv", file)
             ]
             
@@ -82,6 +101,7 @@ class DataViewer:
                     if month not in self.date_dict[year]:
                         self.date_dict[year].append(month)
                 
+                # Rest of the method remains the same
                 # Sort the months for each year
                 for year in self.date_dict:
                     self.date_dict[year] = sorted(self.date_dict[year])
@@ -117,17 +137,25 @@ class DataViewer:
             return None, None
         
 
-    def load_csv(self, file_name):
+    def load_csv(self, file_name, subfolder=None):
         """
         Load a CSV file into a Pandas DataFrame.
         Only displays a warning or error message if something goes wrong.
+        
+        Args:
+            file_name: Name of the CSV file to load
+            subfolder: Optional subfolder within VIEWER_FOLDER_NAME
         """
-        file_path = os.path.join(VIEWER_FOLDER_NAME, file_name)
+        if subfolder:
+            file_path = os.path.join(VIEWER_FOLDER_NAME, subfolder, file_name)
+        else:
+            file_path = os.path.join(VIEWER_FOLDER_NAME, file_name)
+            
         try:
             if os.path.exists(file_path):
                 return pd.read_csv(file_path)
             else:
-                st.warning(f"⚠️ File `{file_name}` not found in `{VIEWER_FOLDER_NAME}`.")
+                st.warning(f"⚠️ File `{file_name}` not found in `{os.path.dirname(file_path)}`.")
                 return None
         
         except Exception as e:

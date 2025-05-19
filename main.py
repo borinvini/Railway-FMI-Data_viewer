@@ -15,7 +15,11 @@ def ensure_directories():
         "data/ai_results",
         "data/ai_results/by_month",
         "data/ai_results/by_region",
-        VIEWER_FOLDER_NAME  # data/viewers
+        VIEWER_FOLDER_NAME,  # data/viewers
+        os.path.join(VIEWER_FOLDER_NAME, "train_data"),
+        os.path.join(VIEWER_FOLDER_NAME, "weather_data"),
+        os.path.join(VIEWER_FOLDER_NAME, "matched_data"),
+        os.path.join(VIEWER_FOLDER_NAME, "metadata")
     ]
     
     # Create directories if they don't exist
@@ -37,9 +41,23 @@ def main():
     if not viewer.has_data():
         return
 
-    viewer.check_file_pattern(CSV_ALL_TRAINS)
-    viewer.check_file_pattern(CSV_FMI)
-    viewer.check_file_pattern(CSV_MATCHED_DATA)
+    # Use the updated check_file_pattern method with subfolders
+    st.subheader("Data File Status")
+    
+    # Check train data files
+    st.markdown("#### Train Data")
+    viewer.check_file_pattern(CSV_ALL_TRAINS, "train_data")
+    
+    # Check weather data files
+    st.markdown("#### Weather Data")
+    viewer.check_file_pattern(CSV_FMI, "weather_data")
+    
+    # Check matched data files
+    st.markdown("#### Matched Data")
+    viewer.check_file_pattern(CSV_MATCHED_DATA, "matched_data")
+    
+    # Display date range
+    st.subheader("Date Range")
     viewer.get_date_range()
 
 
