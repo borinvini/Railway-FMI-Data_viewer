@@ -93,7 +93,6 @@ if date_dict:
                         # Check if 'causes' column exists in the timetable data
                         if 'causes' in timetable_df.columns:
                             # Get only rows with non-empty causes data
-                            # Filter out both NaN values and empty arrays/lists
                             causes_data = timetable_df[
                                 timetable_df['causes'].notna() & 
                                 timetable_df['causes'].apply(lambda x: 
@@ -103,6 +102,18 @@ if date_dict:
                             ]
                             
                             if not causes_data.empty:
+                                # Load metadata for delay causes
+                                metadata_path = os.path.join(VIEWER_FOLDER_NAME, "metadata", "metadata_train_causes.csv")
+                                category_code_map = {}
+                                
+                                if os.path.exists(metadata_path):
+                                    try:
+                                        metadata_df = pd.read_csv(metadata_path)
+                                        # Create mapping from code to meaning
+                                        category_code_map = dict(zip(metadata_df['categoryCode'], metadata_df['categoryName_en']))
+                                    except Exception as e:
+                                        st.warning(f"Error loading delay causes metadata: {e}")
+                                
                                 st.subheader("Delay Causes")
                                 st.write("The following delay causes were reported for this train:")
                                 
@@ -111,24 +122,26 @@ if date_dict:
                                     st.markdown(f"**Station: {row['stationName']} ({row['type']})**")
                                     
                                     # Handle the causes data based on its type
-                                    if isinstance(row['causes'], str):
-                                        # If it's a string, try to parse it
-                                        try:
-                                            from ast import literal_eval
-                                            causes_obj = literal_eval(row['causes'])
-                                            if causes_obj and len(causes_obj) > 0:  # Only display if not empty
-                                                st.json(causes_obj)
-                                        except:
-                                            # If parsing fails, display as text
-                                            st.write(row['causes'])
-                                    elif isinstance(row['causes'], (list, dict)) and len(row['causes']) > 0:
-                                        # If it's already structured data and not empty, display as JSON
-                                        st.json(row['causes'])
-                                    else:
-                                        # For any other type, display as string if not empty
-                                        cause_str = str(row['causes'])
-                                        if cause_str and cause_str not in ("[]", "{}"):
-                                            st.write(cause_str)
+                                    try:
+                                        # Get the causes data
+                                        causes = row['causes']
+                                        if isinstance(causes, str):
+                                            causes = literal_eval(causes)
+                                        
+                                        # Display the JSON
+                                        st.json(causes)
+                                        
+                                        # Add explanations for category codes
+                                        if category_code_map and isinstance(causes, list):
+                                            for cause in causes:
+                                                if isinstance(cause, dict) and 'categoryCode' in cause:
+                                                    code = cause['categoryCode']
+                                                    if code in category_code_map:
+                                                        meaning = category_code_map[code]
+                                                        st.markdown(f"**Category code '{code}'**: {meaning}")
+                                    except Exception as e:
+                                        # If parsing fails, display the raw data
+                                        st.write(row['causes'])
                                     
                                     # Add a separator between entries
                                     st.markdown("---")
