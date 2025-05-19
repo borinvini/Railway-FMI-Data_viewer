@@ -4,7 +4,11 @@ import folium
 from streamlit_folium import st_folium
 import os
 from src.DataViewer import DataViewer
-from config.const import CSV_FMI_EMS, CSV_CLOSEST_EMS_TRAIN, VIEWER_FOLDER_NAME
+from config.const import VIEWER_FOLDER_NAME
+
+# Updated file names with metadata_ prefix
+CSV_FMI_EMS = "metadata_fmi_ems_stations.csv"
+CSV_CLOSEST_EMS_TRAIN = "metadata_closest_ems_to_train_stations.csv"
 
 # Page configuration
 st.set_page_config(
