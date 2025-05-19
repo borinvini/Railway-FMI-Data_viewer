@@ -375,19 +375,16 @@ def main():
     # FUTURE WORK SECTION
     st.markdown("## 🗺️ Future Work: Train Station Regional Classification")
     st.markdown("""
-    As part of our planned enhancements, we intend to implement a regional classification of train stations 
-    across Finland. This will allow us to analyze weather impacts and train delays by geographic region.
     
     ### Planned Features:
     
-    - **K-means clustering** of train stations based on geographic coordinates
-    - Division into 4 regions (Northeast, Northwest, Southeast, Southwest)
-    - Region-specific delay analysis and prediction
-    - Weather impact visualization by region
-    - Comparative performance metrics across different regions
+    - Understand the impact of the missing measurements like snow deph in the models
+    - Understand the impact of o commercialStop and trainStopping column in the models
+    - Fine tune the features to improve performance. More data, more models.
+    - Region-specific delay analysis and prediction.
+    - Paper
     
-    This geographic classification will help identify region-specific patterns and improve our prediction accuracy
-    by accounting for local weather effects and infrastructure differences.
+
     """)
     
     # Try to load the train stations data for mockup visualization

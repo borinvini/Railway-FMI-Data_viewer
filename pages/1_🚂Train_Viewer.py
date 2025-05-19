@@ -3,6 +3,7 @@ from config.const import CSV_ALL_TRAINS, VIEWER_FOLDER_NAME
 from src.DataViewer import DataViewer
 import os
 import pandas as pd
+from ast import literal_eval
 
 # Initialize DataViewer instance
 viewer = DataViewer()
@@ -65,7 +66,8 @@ if date_dict:
                         ].values[0]
 
                         # Convert timetable data to a DataFrame
-                        timetable_df = pd.DataFrame(eval(train_timetable))
+                        train_timetable = train_timetable.replace('nan', 'None')  # Replace nan with None for safe parsing
+                        timetable_df = pd.DataFrame(literal_eval(train_timetable))
 
                         # Define preferred column order
                         preferred_columns = [
@@ -87,6 +89,52 @@ if date_dict:
                         # Display the timetable
                         st.subheader(f"Time Table for Train **{selected_train_number}** on **{selected_day}**")
                         st.dataframe(timetable_df)
+
+                        # Check if 'causes' column exists in the timetable data
+                        if 'causes' in timetable_df.columns:
+                            # Get only rows with non-empty causes data
+                            # Filter out both NaN values and empty arrays/lists
+                            causes_data = timetable_df[
+                                timetable_df['causes'].notna() & 
+                                timetable_df['causes'].apply(lambda x: 
+                                    not (isinstance(x, str) and x in ('[]', '{}')) and
+                                    not (isinstance(x, (list, dict)) and len(x) == 0)
+                                )
+                            ]
+                            
+                            if not causes_data.empty:
+                                st.subheader("Delay Causes")
+                                st.write("The following delay causes were reported for this train:")
+                                
+                                # Display each cause with its associated station
+                                for index, row in causes_data.iterrows():
+                                    st.markdown(f"**Station: {row['stationName']} ({row['type']})**")
+                                    
+                                    # Handle the causes data based on its type
+                                    if isinstance(row['causes'], str):
+                                        # If it's a string, try to parse it
+                                        try:
+                                            from ast import literal_eval
+                                            causes_obj = literal_eval(row['causes'])
+                                            if causes_obj and len(causes_obj) > 0:  # Only display if not empty
+                                                st.json(causes_obj)
+                                        except:
+                                            # If parsing fails, display as text
+                                            st.write(row['causes'])
+                                    elif isinstance(row['causes'], (list, dict)) and len(row['causes']) > 0:
+                                        # If it's already structured data and not empty, display as JSON
+                                        st.json(row['causes'])
+                                    else:
+                                        # For any other type, display as string if not empty
+                                        cause_str = str(row['causes'])
+                                        if cause_str and cause_str not in ("[]", "{}"):
+                                            st.write(cause_str)
+                                    
+                                    # Add a separator between entries
+                                    st.markdown("---")
+                            else:
+                                # Optionally show a message if no delay causes were found
+                                st.info("No delay causes reported for this train.")
 
         else:
             st.warning(f"⚠️ File `{file_name}` not found in `{VIEWER_FOLDER_NAME}`.")
