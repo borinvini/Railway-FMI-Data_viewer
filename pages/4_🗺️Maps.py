@@ -298,7 +298,7 @@ if mapping_data is not None and not mapping_data.empty:
         st.write(f"Displaying {len(filtered_data)} train stations and {len(added_ems_stations)} EMS stations")
     
     # Display the map using streamlit-folium (full width)
-    st_data = st_folium(m, width=None, height=600, returned_objects=[])
+    st_data = st_folium(m, width=None, height=900, returned_objects=[])
     
     # Statistics and additional information (below the map)
     st.subheader("Map Statistics")
