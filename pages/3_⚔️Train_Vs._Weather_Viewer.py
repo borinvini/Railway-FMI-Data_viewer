@@ -46,7 +46,11 @@ def get_station_coordinates(station_short_codes):
                 filtered_stations = mapping_df[mapping_df['stationShortCode'].isin(station_short_codes)]
                 
                 if not filtered_stations.empty:
-                    return filtered_stations[['stationShortCode', 'latitude', 'longitude']]
+                    # Also save the EMS information
+                    cols_to_keep = ['stationShortCode', 'latitude', 'longitude']
+                    ems_cols = [col for col in mapping_df.columns if col.startswith('ems_') or col == 'closest_ems_station']
+                    cols_to_keep.extend(ems_cols)
+                    return filtered_stations[cols_to_keep]
         except Exception as e:
             st.warning(f"⚠️ Error reading train-EMS mapping file: {e}")
     
@@ -87,10 +91,82 @@ def get_station_coordinates(station_short_codes):
     st.warning("⚠️ Could not find station coordinates in any of the expected files.")
     return pd.DataFrame()
 
+# Helper function to format weather data for popup
+def format_weather_data_for_popup(weather_data):
+    """
+    Format weather data for display in a popup.
+    
+    Args:
+        weather_data: Dictionary or string containing weather data
+        
+    Returns:
+        HTML formatted string with weather data
+    """
+    if not weather_data:
+        return "<p><i>No weather data available</i></p>"
+    
+    # If weather_data is a string, convert it to a dictionary
+    if isinstance(weather_data, str):
+        try:
+            weather_data = weather_data.replace('nan', 'None')
+            weather_data = literal_eval(weather_data)
+        except Exception as e:
+            return f"<p><i>Error parsing weather data: {str(e)}</i></p>"
+    
+    # Create HTML for the weather data
+    html = "<div style='max-height: 300px; overflow-y: auto;'>"
+    html += "<h4>Weather Measurements</h4>"
+    html += "<table style='width: 100%; border-collapse: collapse;'>"
+    
+    # Priority weather conditions to show first
+    priority_keys = [
+        'Air temperature', 
+        'Wind speed', 
+        'Gust speed', 
+        'Wind direction', 
+        'Relative humidity',
+        'Precipitation amount', 
+        'Snow depth'
+    ]
+    
+    # Show priority keys first
+    for key in priority_keys:
+        if key in weather_data and weather_data[key] is not None:
+            value = weather_data[key]
+            # Format the value based on its type
+            if isinstance(value, (int, float)):
+                if abs(value) < 0.01:
+                    value_str = "0"
+                else:
+                    value_str = f"{value:.2f}"
+            else:
+                value_str = str(value)
+                
+            html += f"<tr><td><b>{key}</b></td><td>{value_str}</td></tr>"
+    
+    # Show remaining keys
+    for key, value in weather_data.items():
+        if key not in priority_keys and value is not None:
+            # Format the value based on its type
+            if isinstance(value, (int, float)):
+                if abs(value) < 0.01:
+                    value_str = "0"
+                else:
+                    value_str = f"{value:.2f}"
+            else:
+                value_str = str(value)
+                
+            html += f"<tr><td><b>{key}</b></td><td>{value_str}</td></tr>"
+    
+    html += "</table></div>"
+    return html
+
 # Function to create a train route map
 def create_train_route_map(timetable_df):
     """
     Create a map showing the route of the train through its stations.
+    Only departures will be shown as markers, along with the closest EMS stations
+    and lines connecting train stations to their EMS stations.
     
     Args:
         timetable_df: DataFrame containing the train's timetable
@@ -101,12 +177,17 @@ def create_train_route_map(timetable_df):
     # Extract unique stations from timetable
     unique_stations = timetable_df['stationShortCode'].unique()
     
-    # Get coordinates for each station
+    # Get coordinates for each station and EMS information
     station_coords = get_station_coordinates(unique_stations)
     
     if station_coords.empty:
         st.warning("⚠️ Could not get station coordinates. Map cannot be displayed.")
         return None
+    
+    # Check if we have EMS information
+    has_ems_info = all(col in station_coords.columns for col in ['closest_ems_station', 'ems_latitude', 'ems_longitude'])
+    if not has_ems_info:
+        st.warning("⚠️ EMS station information not available in the metadata. Only train stations will be shown.")
     
     # Merge coordinates with timetable to get the full sequence with time info
     timetable_with_coords = pd.merge(timetable_df, station_coords, on='stationShortCode', how='left')
@@ -131,41 +212,18 @@ def create_train_route_map(timetable_df):
         attr="© OpenStreetMap contributors"
     )
     
-    # Create feature groups for arrivals and departures
-    arrivals_group = folium.FeatureGroup(name="Arrivals", show=True)
+    # Create feature groups for different elements
     departures_group = folium.FeatureGroup(name="Departures", show=True)
     route_group = folium.FeatureGroup(name="Train Route", show=True)
+    ems_group = folium.FeatureGroup(name="EMS Stations", show=True)
+    ems_connections_group = folium.FeatureGroup(name="EMS Connections", show=True)
     
-    # Process the timetable to separate arrivals and departures
-    arrivals = timetable_with_coords[timetable_with_coords['type'] == 'ARRIVAL']
+    # Process the timetable to get only departures
     departures = timetable_with_coords[timetable_with_coords['type'] == 'DEPARTURE']
     
     # Create a sequence of all stops for the route line
     # Use all stations but make sure we don't have duplicates in sequence
-    all_stations = timetable_with_coords.drop_duplicates('stationShortCode')[['stationName', 'stationShortCode', 'latitude', 'longitude']]
-    
-    # Add markers for arrivals (blue)
-    for idx, row in arrivals.iterrows():
-        delay_text = ""
-        if 'differenceInMinutes' in row and not pd.isna(row['differenceInMinutes']):
-            delay = row['differenceInMinutes']
-            delay_color = "green" if delay <= 0 else "red"
-            delay_text = f"<br><span style='color:{delay_color}'>Delay: {delay} min</span>"
-            
-        popup_text = f"""
-        <div style='min-width: 180px'>
-            <b>{row['stationName']}</b> ({row['stationShortCode']})<br>
-            <b>Arrival:</b> {row.get('scheduledTime', 'N/A')}{delay_text}
-        </div>
-        """
-        
-        # For arrivals, use a blue marker
-        folium.Marker(
-            location=[row['latitude'], row['longitude']],
-            popup=folium.Popup(popup_text, max_width=300),
-            tooltip=f"🔵 Arrival: {row['stationName']}",
-            icon=folium.Icon(color="blue", icon="train", prefix="fa")
-        ).add_to(arrivals_group)
+    all_stations = timetable_with_coords.drop_duplicates('stationShortCode')
     
     # Add markers for departures (green)
     for idx, row in departures.iterrows():
@@ -210,10 +268,78 @@ def create_train_route_map(timetable_df):
             tooltip="Train Route"
         ).add_to(route_group)
     
+    # Add EMS stations and connections if we have the information
+    if has_ems_info:
+        # Dictionary to store EMS weather data (to avoid duplicating work for shared EMS stations)
+        ems_weather_data = {}
+        
+        # First pass: collect weather data for each EMS station
+        for idx, row in timetable_with_coords.iterrows():
+            if pd.notna(row['closest_ems_station']) and 'weather_observations' in row:
+                ems_station = row['closest_ems_station']
+                
+                # Only process each EMS station once
+                if ems_station not in ems_weather_data:
+                    # Extract weather observations
+                    weather_data = row.get('weather_observations')
+                    ems_weather_data[ems_station] = weather_data
+        
+        # Get unique EMS stations to avoid duplicates
+        unique_ems = all_stations.drop_duplicates('closest_ems_station')
+        
+        # Add EMS stations as markers
+        for idx, row in unique_ems.iterrows():
+            if pd.notna(row['closest_ems_station']) and pd.notna(row['ems_latitude']) and pd.notna(row['ems_longitude']):
+                ems_station = row['closest_ems_station']
+                
+                # Get weather data for this EMS station if available
+                weather_data = ems_weather_data.get(ems_station)
+                weather_html = format_weather_data_for_popup(weather_data)
+                
+                ems_popup_text = f"""
+                <div style='min-width: 250px; max-width: 400px;'>
+                    <h3>☁️ EMS Station: {ems_station}</h3>
+                    <b>Coordinates:</b> {row['ems_latitude']:.6f}, {row['ems_longitude']:.6f}<br>
+                    <hr>
+                    {weather_html}
+                </div>
+                """
+                
+                # Add EMS station marker (blue cloud)
+                folium.Marker(
+                    location=[row['ems_latitude'], row['ems_longitude']],
+                    popup=folium.Popup(ems_popup_text, max_width=400),
+                    tooltip=f"☁️ EMS: {ems_station}",
+                    icon=folium.Icon(color="blue", icon="cloud", prefix="fa")
+                ).add_to(ems_group)
+        
+        # Add lines connecting train stations to their closest EMS
+        for idx, row in all_stations.iterrows():
+            if pd.notna(row['closest_ems_station']) and pd.notna(row['ems_latitude']) and pd.notna(row['ems_longitude']):
+                # Calculate distance between train station and EMS
+                distance_km = None
+                if 'distance_km' in row:
+                    distance_km = row['distance_km']
+                
+                # Create the connection line
+                folium.PolyLine(
+                    locations=[
+                        [row['latitude'], row['longitude']],
+                        [row['ems_latitude'], row['ems_longitude']]
+                    ],
+                    color="purple",
+                    weight=2,
+                    opacity=0.6,
+                    tooltip=f"Distance to EMS: {distance_km:.2f} km" if distance_km else "Train-EMS Connection",
+                    dash_array="5, 10"  # Dashed line
+                ).add_to(ems_connections_group)
+    
     # Add all feature groups to the map
-    arrivals_group.add_to(m)
     departures_group.add_to(m)
     route_group.add_to(m)
+    if has_ems_info:
+        ems_group.add_to(m)
+        ems_connections_group.add_to(m)
     
     # Add layer control
     folium.LayerControl().add_to(m)
@@ -281,7 +407,8 @@ if date_dict:
                                 "actualTime",
                                 "differenceInMinutes",
                                 "differenceInMinutes_offset",
-                                "cancelled"
+                                "cancelled",
+                                "weather_observations"  # Include weather observations for EMS display
                             ]
 
                             # Make sure we only include columns that exist
