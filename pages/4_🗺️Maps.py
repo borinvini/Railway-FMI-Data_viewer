@@ -170,31 +170,9 @@ if mapping_data is not None and not mapping_data.empty:
     m = folium.Map(
         location=[64.9, 25.7],  # Center of Finland (approximate)
         zoom_start=5,
-        tiles="CartoDB positron",  # Use a light map as default
-        attr="© CartoDB, © OpenStreetMap contributors"
+        tiles="OpenStreetMap",  # Use standard map as default
+        attr="© OpenStreetMap contributors"
     )
-    
-    # Add different tile layers
-    folium.TileLayer(
-        tiles="OpenStreetMap",
-        name="Standard Map",
-        attr="© OpenStreetMap contributors",
-        control=True
-    ).add_to(m)
-    
-    folium.TileLayer(
-        tiles="CartoDB dark_matter",
-        name="Dark Map",
-        attr="© CartoDB, © OpenStreetMap contributors",
-        control=True
-    ).add_to(m)
-    
-    folium.TileLayer(
-        tiles="Stamen Terrain",
-        name="Terrain Map",
-        attr="© Stamen Design, © OpenStreetMap contributors",
-        control=True
-    ).add_to(m)
     
     # Create different feature groups
     train_stations_group = folium.FeatureGroup(name="Train Stations", show=True)
