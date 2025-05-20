@@ -164,7 +164,7 @@ def create_train_route_map(timetable_df):
             location=[row['latitude'], row['longitude']],
             popup=folium.Popup(popup_text, max_width=300),
             tooltip=f"🔵 Arrival: {row['stationName']}",
-            icon=folium.Icon(color="blue", icon="arrow-down", prefix="fa")
+            icon=folium.Icon(color="blue", icon="train", prefix="fa")
         ).add_to(arrivals_group)
     
     # Add markers for departures (green)
@@ -187,7 +187,7 @@ def create_train_route_map(timetable_df):
             location=[row['latitude'], row['longitude']],
             popup=folium.Popup(popup_text, max_width=300),
             tooltip=f"🟢 Departure: {row['stationName']}",
-            icon=folium.Icon(color="green", icon="arrow-up", prefix="fa")
+            icon=folium.Icon(color="green", icon="train", prefix="fa")
         ).add_to(departures_group)
     
     # Add a PolyLine connecting all stations in sequence
@@ -301,7 +301,7 @@ if date_dict:
                             if not timetable_df.empty:
                                 train_route_map = create_train_route_map(timetable_df)
                                 if train_route_map:
-                                    st_folium(train_route_map, width=None, height=500, returned_objects=[])
+                                    st_folium(train_route_map, width=None, height=600, returned_objects=[])
                                 else:
                                     st.error("Could not create map due to missing station coordinate data.")
 
