@@ -72,6 +72,7 @@ if date_dict:
                                 "scheduledTime",
                                 "actualTime",
                                 "differenceInMinutes",
+                                "differenceInMinutes_offset",
                                 "cancelled"
                             ]
 
