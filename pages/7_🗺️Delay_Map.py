@@ -20,6 +20,17 @@ sns.set_palette("husl")
 # Constants
 DELAY_TABLE_PATH = "data/viewers/delay_table.csv"
 
+# Day of week mapping (1-based indexing as used in the data)
+DAY_OF_WEEK_MAPPING = {
+    1: "Monday",
+    2: "Tuesday", 
+    3: "Wednesday",
+    4: "Thursday",
+    5: "Friday",
+    6: "Saturday",
+    7: "Sunday"
+}
+
 # Helper functions
 def load_delay_data():
     """Load and validate the delay table data"""
@@ -134,9 +145,14 @@ def plot_aggregated_normalized_delays(monthly_summary, selected_years):
     
     fig, ax = plt.subplots(figsize=(12, 7))
     
-    # Create single bar chart with gradient colors
+    # Create color mapping based on delay percentage values (higher delays = warmer colors)
+    norm = plt.Normalize(aggregated_data['aggregated_delay_percentage'].min(), 
+                        aggregated_data['aggregated_delay_percentage'].max())
+    colors = plt.cm.RdYlGn_r(norm(aggregated_data['aggregated_delay_percentage']))
+    
+    # Create single bar chart with value-based colors
     bars = ax.bar(aggregated_data['month_label'], aggregated_data['aggregated_delay_percentage'], 
-                  color=plt.cm.viridis(np.linspace(0, 1, len(aggregated_data))), alpha=0.8)
+                  color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
     
     ax.set_title(f"Aggregated Normalized Delays by Month ({year_range})", 
                 fontsize=16, fontweight='bold')
@@ -280,9 +296,8 @@ def plot_normalized_delays(monthly_summary):
 
 def plot_delay_heatmap(df):
     """Create a heatmap showing delay patterns by day of week and month"""
-    # Map day of week numbers to names
-    day_names = {0: 'Monday', 1: 'Tuesday', 2: 'Wednesday', 3: 'Thursday', 
-                4: 'Friday', 5: 'Saturday', 6: 'Sunday'}
+    # Use the predefined day of week mapping
+    day_names = DAY_OF_WEEK_MAPPING
     
     # Create pivot table for heatmap
     heatmap_data = df.groupby(['month', 'day_of_week'])['delay_percentage'].mean().reset_index()
@@ -311,22 +326,22 @@ def plot_delay_heatmap(df):
 
 def plot_delay_severity_distribution(df):
     """Create visualization showing distribution of delay severity"""
-    # Create delay severity categories
+    # Create delay severity categories (starting from 5 min since delays <5 min are not in dataset)
     df['delay_severity'] = pd.cut(
         df['avg_delay_minutes'],
-        bins=[0, 5, 10, 15, 20, float('inf')],
-        labels=['Very Low (0-5 min)', 'Low (5-10 min)', 'Medium (10-15 min)', 
+        bins=[5, 10, 15, 20, float('inf')],
+        labels=['Low (5-10 min)', 'Medium (10-15 min)', 
                'High (15-20 min)', 'Very High (20+ min)']
     )
     
     fig, ax = plt.subplots(figsize=(12, 6))
     
-    # Create color palette
-    colors = ['green', 'gold', 'orange', 'red', 'darkred']
+    # Create color palette (removed green since we don't have Very Low category)
+    colors = ['gold', 'orange', 'red', 'darkred']
     
     # Count values and create bar plot
     severity_counts = df['delay_severity'].value_counts().reindex([
-        'Very Low (0-5 min)', 'Low (5-10 min)', 'Medium (10-15 min)', 
+        'Low (5-10 min)', 'Medium (10-15 min)', 
         'High (15-20 min)', 'Very High (20+ min)'
     ])
     
@@ -559,7 +574,7 @@ def main():
         "Normalized Delays (%)", 
         "Seasonal Analysis",
         "Yearly Comparison",
-        "Delay Patterns"
+        "Day of the Week Delays"
     ])
     
     with tab1:
@@ -639,7 +654,7 @@ def main():
         st.pyplot(fig6)
     
     with tab6:
-        st.markdown("### Delay Patterns Analysis")
+        st.markdown("### Day of the Week Delay Analysis")
         
         # Heatmap
         st.markdown("#### Average Delay Percentage by Day of Week and Month")
