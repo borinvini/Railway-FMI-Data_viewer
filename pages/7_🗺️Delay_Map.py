@@ -97,6 +97,17 @@ def create_year_range_string(selected_years):
         # For multiple non-consecutive years, show range
         return f"{sorted_years[0]}-{sorted_years[-1]}"
 
+def get_season(month):
+    """Convert month number to season"""
+    if month in [12, 1, 2]:
+        return 'Winter'
+    elif month in [3, 4, 5]:
+        return 'Spring'
+    elif month in [6, 7, 8]:
+        return 'Summer'
+    else:
+        return 'Autumn'
+
 def plot_aggregated_normalized_delays(monthly_summary, selected_years):
     """Create visualization for normalized delays aggregated across all selected years"""
     # Aggregate data across all selected years for each month
@@ -146,6 +157,64 @@ def plot_aggregated_normalized_delays(monthly_summary, selected_years):
     plt.xticks(rotation=0)
     plt.tight_layout()
     return fig, aggregated_data
+
+def plot_aggregated_seasonal_delays(monthly_summary, selected_years):
+    """Create visualization for normalized delays aggregated across all selected years by season"""
+    # Add season information to monthly summary
+    monthly_summary_with_season = monthly_summary.copy()
+    monthly_summary_with_season['season'] = monthly_summary_with_season['month'].apply(get_season)
+    
+    # Aggregate data across all selected years for each season
+    aggregated_seasonal_data = monthly_summary_with_season.groupby('season').agg({
+        'delay_count_by_day': 'sum',
+        'total_schedules_by_day': 'sum'
+    }).reset_index()
+    
+    # Calculate normalized delays for the aggregated seasonal data
+    aggregated_seasonal_data['aggregated_delay_percentage'] = (
+        aggregated_seasonal_data['delay_count_by_day'] / aggregated_seasonal_data['total_schedules_by_day']
+    ) * 100
+    
+    # Define season order and colors
+    season_order = ['Winter', 'Spring', 'Summer', 'Autumn']
+    season_colors = ['#3498db', '#2ecc71', '#f39c12', '#e74c3c']  # Blue, Green, Orange, Red
+    
+    # Reorder the data according to season order
+    aggregated_seasonal_data['season'] = pd.Categorical(
+        aggregated_seasonal_data['season'], 
+        categories=season_order, 
+        ordered=True
+    )
+    aggregated_seasonal_data = aggregated_seasonal_data.sort_values('season')
+    
+    # Create dynamic year range string
+    year_range = create_year_range_string(selected_years)
+    
+    fig, ax = plt.subplots(figsize=(10, 7))
+    
+    # Create single bar chart with seasonal colors
+    bars = ax.bar(aggregated_seasonal_data['season'], aggregated_seasonal_data['aggregated_delay_percentage'], 
+                  color=season_colors, alpha=0.8, edgecolor='black', linewidth=1)
+    
+    ax.set_title(f"Aggregated Normalized Delays by Season ({year_range})", 
+                fontsize=16, fontweight='bold')
+    ax.set_xlabel("Season", fontsize=12)
+    ax.set_ylabel("Delay Percentage (%)", fontsize=12)
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # Add value labels on bars
+    for bar, percentage in zip(bars, aggregated_seasonal_data['aggregated_delay_percentage']):
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height + 0.05,
+                f'{percentage:.1f}%',
+                ha='center', va='bottom', fontweight='bold', fontsize=12)
+    
+    # Format y-axis to show percentage
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    
+    plt.xticks(rotation=0)
+    plt.tight_layout()
+    return fig, aggregated_seasonal_data
 
 def plot_delays_per_month_year(monthly_summary):
     """Create visualization for total delays per month per year"""
@@ -282,16 +351,6 @@ def plot_delay_severity_distribution(df):
 def plot_seasonal_trends(monthly_summary):
     """Create seasonal trends visualization"""
     # Add season information
-    def get_season(month):
-        if month in [12, 1, 2]:
-            return 'Winter'
-        elif month in [3, 4, 5]:
-            return 'Spring'
-        elif month in [6, 7, 8]:
-            return 'Summer'
-        else:
-            return 'Autumn'
-    
     monthly_summary['season'] = monthly_summary['month'].apply(get_season)
     
     seasonal_data = monthly_summary.groupby(['year', 'season']).agg({
@@ -537,8 +596,40 @@ def main():
         - **Autumn**: September, October, November
         """)
         
+        # First plot: Year-by-year seasonal comparison
+        st.markdown("#### Seasonal Analysis by Year")
+        st.markdown("This view shows how delays vary by season across different years, allowing for year-to-year comparison.")
+        
         fig5 = plot_seasonal_trends(filtered_monthly_summary)
         st.pyplot(fig5)
+        
+        # Second plot: Aggregated seasonal analysis
+        st.markdown("#### Aggregated Seasonal Analysis")
+        st.markdown(f"This chart combines all selected years ({year_range}) into a single seasonal view, showing the overall delay percentage for each season across the entire selected period.")
+        
+        fig_seasonal_agg, seasonal_agg_data = plot_aggregated_seasonal_delays(filtered_monthly_summary, selected_years)
+        st.pyplot(fig_seasonal_agg)
+        
+        # Show seasonal insights
+        if not seasonal_agg_data.empty:
+            worst_season = seasonal_agg_data.loc[seasonal_agg_data['aggregated_delay_percentage'].idxmax()]
+            best_season = seasonal_agg_data.loc[seasonal_agg_data['aggregated_delay_percentage'].idxmin()]
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.metric(
+                    label="🔴 Highest Delay Season", 
+                    value=f"{worst_season['season']}", 
+                    delta=f"{worst_season['aggregated_delay_percentage']:.1f}%"
+                )
+            
+            with col2:
+                st.metric(
+                    label="🟢 Lowest Delay Season", 
+                    value=f"{best_season['season']}", 
+                    delta=f"{best_season['aggregated_delay_percentage']:.1f}%"
+                )
     
     with tab5:
         st.markdown("### Yearly Comparison")
