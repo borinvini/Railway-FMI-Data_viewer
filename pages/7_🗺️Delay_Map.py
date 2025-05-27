@@ -520,8 +520,11 @@ def main():
     # Create monthly summary
     monthly_summary = create_monthly_delay_summary(df)
     
+    # SIDEBAR CONFIGURATION
+    st.sidebar.header("🎯 Analysis Configuration")
+    
     # Year selection for plots
-    st.subheader("🎯 Year Selection for Analysis")
+    st.sidebar.subheader("Year Selection")
     
     available_years = sorted(monthly_summary['year'].unique())
     
@@ -532,20 +535,17 @@ def main():
         else:
             st.session_state.selected_years = [max(available_years)]
     
-    col1, col2 = st.columns([3, 1])
+    # Select All Years button
+    if st.sidebar.button("Select All Years"):
+        st.session_state.selected_years = available_years
     
-    with col2:
-        if st.button("Select All Years"):
-            st.session_state.selected_years = available_years
-    
-    with col1:
-        selected_years = st.multiselect(
-            "Select years to display in charts:",
-            options=available_years,
-            default=st.session_state.selected_years,
-            help="You can select multiple years to compare them side by side",
-            key="year_selector"
-        )
+    # Year multiselect
+    selected_years = st.sidebar.multiselect(
+        "Select years to display:",
+        options=available_years,
+        default=st.session_state.selected_years,
+        help="You can select multiple years to compare them side by side"
+    )
     
     # Update session state
     if selected_years:
@@ -565,40 +565,53 @@ def main():
     # Show selection info and create dynamic year range
     year_range = create_year_range_string(selected_years)
     
-    # Main visualizations - REORDERED TABS
+    # SIDEBAR PLOT SELECTION
+    st.sidebar.subheader("📈 Chart Selection")
+    
+    # Define plot options
+    plot_options = {
+        f"📊 Aggregated Delays (%) - {year_range}": "aggregated_delays",
+        "📈 Total Delays by Month": "total_delays",
+        "📊 Normalized Delays (%)": "normalized_delays",
+        "🌦️ Seasonal Analysis": "seasonal_analysis",
+        "📅 Yearly Comparison": "yearly_comparison",
+        "📆 Day of Week Analysis": "day_of_week"
+    }
+    
+    selected_plot = st.sidebar.radio(
+        "Choose visualization:",
+        options=list(plot_options.keys()),
+        index=0
+    )
+    
+    # Get the plot key
+    plot_key = plot_options[selected_plot]
+    
+    # MAIN CONTENT AREA - Display selected plot
     st.subheader("📈 Monthly Delay Analysis")
     
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        f"Aggregated Delays (%) ({year_range})",
-        "Total Delays by Month", 
-        "Normalized Delays (%)", 
-        "Seasonal Analysis",
-        "Yearly Comparison",
-        "Day of the Week Delays"
-    ])
-    
-    with tab1:
+    if plot_key == "aggregated_delays":
         st.markdown(f"### Aggregated Normalized Delays ({year_range})")
         st.markdown("This chart combines all selected years into a single view, showing the overall delay percentage for each month across the entire selected period.")
         
         fig_agg, aggregated_data = plot_aggregated_normalized_delays(filtered_monthly_summary, selected_years)
         st.pyplot(fig_agg)
         
-    with tab2:
+    elif plot_key == "total_delays":
         st.markdown("### Total Number of Delays per Month by Year")
         st.markdown("This chart shows the absolute number of delays for each month across different years.")
         
         fig1 = plot_delays_per_month_year(filtered_monthly_summary)
         st.pyplot(fig1)
 
-    with tab3:
+    elif plot_key == "normalized_delays":
         st.markdown("### Normalized Delays (Percentage) per Month by Year")
         st.markdown("This chart shows delay rates as a percentage of total schedules, allowing for fair comparison across months with different traffic volumes.")
         
         fig2 = plot_normalized_delays(filtered_monthly_summary)
         st.pyplot(fig2)
 
-    with tab4:
+    elif plot_key == "seasonal_analysis":
         st.markdown("### Seasonal Delay Analysis")
         st.markdown("Compare delay patterns across different seasons to identify weather or operational impacts.")
         
@@ -646,14 +659,14 @@ def main():
                     delta=f"{best_season['aggregated_delay_percentage']:.1f}%"
                 )
     
-    with tab5:
+    elif plot_key == "yearly_comparison":
         st.markdown("### Yearly Comparison")
         st.markdown("Compare overall performance metrics across different years.")
         
         fig6 = plot_yearly_comparison(filtered_monthly_summary)
         st.pyplot(fig6)
     
-    with tab6:
+    elif plot_key == "day_of_week":
         st.markdown("### Day of the Week Delay Analysis")
         
         # Heatmap
@@ -676,7 +689,6 @@ def main():
     
     This metric shows what percentage of all scheduled trains experienced delays, making it easier to compare months with different numbers of total train schedules.
     """)  
-
 
     # Detailed statistics
     st.subheader("📋 Detailed Statistics")
@@ -708,7 +720,6 @@ def main():
             })
         )
 
-    
     # Download options
     st.subheader("💾 Download Data")
     
