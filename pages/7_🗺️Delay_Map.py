@@ -82,7 +82,22 @@ def create_monthly_delay_summary(df):
     
     return monthly_summary
 
-def plot_aggregated_normalized_delays(monthly_summary):
+def create_year_range_string(selected_years):
+    """Create a formatted year range string from selected years"""
+    if not selected_years:
+        return ""
+    
+    sorted_years = sorted(selected_years)
+    
+    if len(sorted_years) == 1:
+        return str(sorted_years[0])
+    elif len(sorted_years) == 2:
+        return f"{sorted_years[0]}-{sorted_years[1]}"
+    else:
+        # For multiple non-consecutive years, show range
+        return f"{sorted_years[0]}-{sorted_years[-1]}"
+
+def plot_aggregated_normalized_delays(monthly_summary, selected_years):
     """Create visualization for normalized delays aggregated across all selected years"""
     # Aggregate data across all selected years for each month
     aggregated_data = monthly_summary.groupby('month').agg({
@@ -103,13 +118,16 @@ def plot_aggregated_normalized_delays(monthly_summary):
         i+1: month_labels[i] for i in range(12)
     })
     
+    # Create dynamic year range string
+    year_range = create_year_range_string(selected_years)
+    
     fig, ax = plt.subplots(figsize=(12, 7))
     
     # Create single bar chart with gradient colors
     bars = ax.bar(aggregated_data['month_label'], aggregated_data['aggregated_delay_percentage'], 
                   color=plt.cm.viridis(np.linspace(0, 1, len(aggregated_data))), alpha=0.8)
     
-    ax.set_title("Aggregated Normalized Delays by Month (2020-2024)", 
+    ax.set_title(f"Aggregated Normalized Delays by Month ({year_range})", 
                 fontsize=16, fontweight='bold')
     ax.set_xlabel("Month", fontsize=12)
     ax.set_ylabel("Delay Percentage (%)", fontsize=12)
@@ -470,14 +488,14 @@ def main():
         st.error("❌ No data available for the selected years.")
         st.stop()
     
-    # Show selection info
-    years_str = ", ".join(map(str, sorted(selected_years)))
+    # Show selection info and create dynamic year range
+    year_range = create_year_range_string(selected_years)
     
     # Main visualizations
     st.subheader("📈 Monthly Delay Analysis")
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "Aggregated Delays (%)",
+        f"Aggregated Delays (%) ({year_range})",
         "Total Delays by Month", 
         "Normalized Delays (%)", 
         "Delay Patterns", 
@@ -486,10 +504,10 @@ def main():
     ])
     
     with tab1:
-        st.markdown("### Aggregated Normalized Delays (2020-2024)")
-        #st.markdown("This chart combines all selected years into a single view, showing the overall delay percentage for each month across the entire selected period.")
+        st.markdown(f"### Aggregated Normalized Delays ({year_range})")
+        st.markdown("This chart combines all selected years into a single view, showing the overall delay percentage for each month across the entire selected period.")
         
-        fig_agg, aggregated_data = plot_aggregated_normalized_delays(filtered_monthly_summary)
+        fig_agg, aggregated_data = plot_aggregated_normalized_delays(filtered_monthly_summary, selected_years)
         st.pyplot(fig_agg)
         
     with tab2:
@@ -498,38 +516,14 @@ def main():
         
         fig1 = plot_delays_per_month_year(filtered_monthly_summary)
         st.pyplot(fig1)
-        
-        # Additional insights
-        st.markdown("#### Key Insights:")
-        worst_month_year = filtered_monthly_summary.loc[filtered_monthly_summary['delay_count_by_day'].idxmax()]
-        best_month_year = filtered_monthly_summary.loc[filtered_monthly_summary['delay_count_by_day'].idxmin()]
-        
-        st.write(f"- **Worst month**: {worst_month_year['month_year_str']} with {worst_month_year['delay_count_by_day']:,} delays")
-        st.write(f"- **Best month**: {best_month_year['month_year_str']} with {best_month_year['delay_count_by_day']:,} delays")
-    
+
     with tab3:
         st.markdown("### Normalized Delays (Percentage) per Month by Year")
         st.markdown("This chart shows delay rates as a percentage of total schedules, allowing for fair comparison across months with different traffic volumes.")
         
         fig2 = plot_normalized_delays(filtered_monthly_summary)
         st.pyplot(fig2)
-        
-        # Additional insights
-        st.markdown("#### Key Insights:")
-        worst_percentage_month = filtered_monthly_summary.loc[filtered_monthly_summary['monthly_delay_percentage'].idxmax()]
-        best_percentage_month = filtered_monthly_summary.loc[filtered_monthly_summary['monthly_delay_percentage'].idxmin()]
-        
-        st.write(f"- **Highest delay rate**: {worst_percentage_month['month_year_str']} with {worst_percentage_month['monthly_delay_percentage']:.2f}% delays")
-        st.write(f"- **Lowest delay rate**: {best_percentage_month['month_year_str']} with {best_percentage_month['monthly_delay_percentage']:.2f}% delays")
-    
-    with tab4:
-        st.markdown("### Delay Patterns Analysis")
-        
-        # Heatmap
-        st.markdown("#### Average Delay Percentage by Day of Week and Month")
-        fig3 = plot_delay_heatmap(df)
-        st.pyplot(fig3)
-        
+
     with tab4:
         st.markdown("### Delay Patterns Analysis")
         
