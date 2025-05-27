@@ -491,16 +491,16 @@ def main():
     # Show selection info and create dynamic year range
     year_range = create_year_range_string(selected_years)
     
-    # Main visualizations
+    # Main visualizations - REORDERED TABS
     st.subheader("📈 Monthly Delay Analysis")
     
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         f"Aggregated Delays (%) ({year_range})",
         "Total Delays by Month", 
         "Normalized Delays (%)", 
-        "Delay Patterns", 
         "Seasonal Analysis",
-        "Yearly Comparison"
+        "Yearly Comparison",
+        "Delay Patterns"
     ])
     
     with tab1:
@@ -525,6 +525,29 @@ def main():
         st.pyplot(fig2)
 
     with tab4:
+        st.markdown("### Seasonal Delay Analysis")
+        st.markdown("Compare delay patterns across different seasons to identify weather or operational impacts.")
+        
+        # Add season definition note
+        st.info("""
+        🗓️ **Season Definitions:**
+        - **Winter**: December, January, February
+        - **Spring**: March, April, May  
+        - **Summer**: June, July, August
+        - **Autumn**: September, October, November
+        """)
+        
+        fig5 = plot_seasonal_trends(filtered_monthly_summary)
+        st.pyplot(fig5)
+    
+    with tab5:
+        st.markdown("### Yearly Comparison")
+        st.markdown("Compare overall performance metrics across different years.")
+        
+        fig6 = plot_yearly_comparison(filtered_monthly_summary)
+        st.pyplot(fig6)
+    
+    with tab6:
         st.markdown("### Delay Patterns Analysis")
         
         # Heatmap
@@ -536,20 +559,6 @@ def main():
         st.markdown("#### Distribution of Days by Average Delay Severity")
         fig4 = plot_delay_severity_distribution(df)
         st.pyplot(fig4)
-    
-    with tab5:
-        st.markdown("### Seasonal Delay Analysis")
-        st.markdown("Compare delay patterns across different seasons to identify weather or operational impacts.")
-        
-        fig5 = plot_seasonal_trends(filtered_monthly_summary)
-        st.pyplot(fig5)
-    
-    with tab6:
-        st.markdown("### Yearly Comparison")
-        st.markdown("Compare overall performance metrics across different years.")
-        
-        fig6 = plot_yearly_comparison(filtered_monthly_summary)
-        st.pyplot(fig6)
     
     # Explanation of normalized delay
     st.info("""
