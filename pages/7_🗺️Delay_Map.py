@@ -486,7 +486,7 @@ def main():
     ])
     
     with tab1:
-        st.markdown("### Aggregated Normalized Delays (All Selected Years Combined)")
+        st.markdown("### Aggregated Normalized Delays (2020-2024)")
         #st.markdown("This chart combines all selected years into a single view, showing the overall delay percentage for each month across the entire selected period.")
         
         fig_agg, aggregated_data = plot_aggregated_normalized_delays(filtered_monthly_summary)
@@ -557,6 +557,18 @@ def main():
         fig6 = plot_yearly_comparison(filtered_monthly_summary)
         st.pyplot(fig6)
     
+    # Explanation of normalized delay
+    st.info("""
+    📊 **Normalized Delay Explanation**: 
+    
+    ```
+    Normalized Delay (%) = (Total Number of Delays ÷ Total Number of Schedules) × 100
+    ```
+    
+    This metric shows what percentage of all scheduled trains experienced delays, making it easier to compare months with different numbers of total train schedules.
+    """)  
+
+
     # Detailed statistics
     st.subheader("📋 Detailed Statistics")
     
@@ -586,6 +598,7 @@ def main():
                 'avg_delay_minutes': '{:.2f}'
             })
         )
+
     
     # Download options
     st.subheader("💾 Download Data")
