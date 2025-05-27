@@ -109,7 +109,7 @@ def plot_aggregated_normalized_delays(monthly_summary):
     bars = ax.bar(aggregated_data['month_label'], aggregated_data['aggregated_delay_percentage'], 
                   color=plt.cm.viridis(np.linspace(0, 1, len(aggregated_data))), alpha=0.8)
     
-    ax.set_title("Aggregated Normalized Delays by Month (All Selected Years Combined)", 
+    ax.set_title("Aggregated Normalized Delays by Month (2020-2024)", 
                 fontsize=16, fontweight='bold')
     ax.set_xlabel("Month", fontsize=12)
     ax.set_ylabel("Delay Percentage (%)", fontsize=12)
@@ -130,35 +130,6 @@ def plot_aggregated_normalized_delays(monthly_summary):
     return fig, aggregated_data
 
 def plot_delays_per_month_year(monthly_summary):
-    """Create visualization for total delays per month per year"""
-    fig, ax = plt.subplots(figsize=(14, 7))
-    
-    # Create month labels
-    month_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    
-    # Map month numbers to labels for better display
-    monthly_summary['month_label'] = monthly_summary['month'].map({
-        i+1: month_labels[i] for i in range(12)
-    })
-    
-    # Create grouped bar chart
-    sns.barplot(data=monthly_summary, x='month_label', y='delay_count_by_day', 
-                hue='year', ax=ax, palette='Set1')
-    
-    ax.set_title("Total Delays per Month by Year", fontsize=16, fontweight='bold')
-    ax.set_xlabel("Month", fontsize=12)
-    ax.set_ylabel("Total Number of Delays", fontsize=12)
-    ax.legend(title="Year", title_fontsize=12)
-    ax.grid(True, alpha=0.3, axis='y')
-    
-    # Format y-axis to show values in thousands
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1000:.1f}K' if x >= 1000 else f'{x:.0f}'))
-    
-    # Rotate x-axis labels if needed
-    plt.xticks(rotation=0)
-    plt.tight_layout()
-    return fig
     """Create visualization for total delays per month per year"""
     fig, ax = plt.subplots(figsize=(14, 7))
     
@@ -417,16 +388,11 @@ def plot_yearly_comparison(monthly_summary):
 # Main application
 def main():
     st.title("🗺️ Railway Delay Analysis Dashboard")
-    st.markdown("""
-    This dashboard provides comprehensive analysis of railway delays based on historical data.
-    Explore patterns, trends, and insights about train delays across different time periods.
-    """)
     
     # Important information about delay definition
     st.info("""
-    📋 **Important Note:** According to [Väylä (Finnish Transport Infrastructure Agency) statistics](https://vayla.fi/en/transport-network/data/statistics/railway-statistics), 
-    this analysis considers delays for **long distance trains only** and defines a delay as **5 minutes or higher**. 
-    Delays under 5 minutes are not included in this dataset.
+    📋 This analysis considers delays for **long distance trains only** and defines a delay as **5 minutes or higher**. 
+    Delays under 5 minutes are not included in this dataset. Ref: [Väylä (Finnish Transport Infrastructure Agency)](https://vayla.fi/en/transport-network/data/statistics/railway-statistics).
     """)
     
     # Load data
@@ -506,7 +472,6 @@ def main():
     
     # Show selection info
     years_str = ", ".join(map(str, sorted(selected_years)))
-    st.info(f"📊 **Displaying data for year(s)**: {years_str}")
     
     # Main visualizations
     st.subheader("📈 Monthly Delay Analysis")
@@ -521,50 +486,12 @@ def main():
     ])
     
     with tab1:
-        st.markdown("### Aggregated Normalized Delays by Month (All Selected Years Combined)")
-        st.markdown("This chart combines all selected years into a single view, showing the overall delay percentage for each month across the entire selected period.")
+        st.markdown("### Aggregated Normalized Delays (All Selected Years Combined)")
+        #st.markdown("This chart combines all selected years into a single view, showing the overall delay percentage for each month across the entire selected period.")
         
         fig_agg, aggregated_data = plot_aggregated_normalized_delays(filtered_monthly_summary)
         st.pyplot(fig_agg)
         
-        # Additional insights for aggregated data
-        st.markdown("#### Key Insights:")
-        worst_month_agg = aggregated_data.loc[aggregated_data['aggregated_delay_percentage'].idxmax()]
-        best_month_agg = aggregated_data.loc[aggregated_data['aggregated_delay_percentage'].idxmin()]
-        
-        month_names = ['January', 'February', 'March', 'April', 'May', 'June',
-                      'July', 'August', 'September', 'October', 'November', 'December']
-        
-        worst_month_name = month_names[worst_month_agg['month'] - 1]
-        best_month_name = month_names[best_month_agg['month'] - 1]
-        
-        selected_years_count = len(filtered_monthly_summary['year'].unique())
-        years_text = f"across {selected_years_count} year(s)" if selected_years_count > 1 else "for the selected year"
-        
-        st.write(f"- **Worst performing month** {years_text}: **{worst_month_name}** with {worst_month_agg['aggregated_delay_percentage']:.2f}% delays")
-        st.write(f"- **Best performing month** {years_text}: **{best_month_name}** with {best_month_agg['aggregated_delay_percentage']:.2f}% delays")
-        st.write(f"- **Total delays analyzed**: {aggregated_data['delay_count_by_day'].sum():,} delays")
-        st.write(f"- **Total schedules analyzed**: {aggregated_data['total_schedules_by_day'].sum():,} schedules")
-        
-        # Show seasonal patterns
-        st.markdown("#### Seasonal Patterns:")
-        seasons = {
-            'Winter': [12, 1, 2], 'Spring': [3, 4, 5], 
-            'Summer': [6, 7, 8], 'Autumn': [9, 10, 11]
-        }
-        
-        seasonal_avg = {}
-        for season, months in seasons.items():
-            season_data = aggregated_data[aggregated_data['month'].isin(months)]
-            if not season_data.empty:
-                seasonal_avg[season] = season_data['aggregated_delay_percentage'].mean()
-        
-        if seasonal_avg:
-            best_season = min(seasonal_avg, key=seasonal_avg.get)
-            worst_season = max(seasonal_avg, key=seasonal_avg.get)
-            st.write(f"- **Best season overall**: **{best_season}** ({seasonal_avg[best_season]:.2f}% avg delay rate)")
-            st.write(f"- **Worst season overall**: **{worst_season}** ({seasonal_avg[worst_season]:.2f}% avg delay rate)")
-    
     with tab2:
         st.markdown("### Total Number of Delays per Month by Year")
         st.markdown("This chart shows the absolute number of delays for each month across different years.")
