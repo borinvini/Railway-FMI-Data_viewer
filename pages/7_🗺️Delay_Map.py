@@ -477,6 +477,183 @@ def plot_yearly_comparison(monthly_summary):
     plt.tight_layout()
     return fig
 
+# NEW DELAY DISTRIBUTION FUNCTIONS
+def plot_daily_delay_distribution(df, selected_years):
+    """
+    Create visualization showing the distribution of daily average delay durations by year.
+    This shows what delay ranges were most common on a day-to-day basis.
+    """
+    # Filter data for selected years
+    filtered_df = df[df['year'].isin(selected_years)]
+    
+    if filtered_df.empty:
+        return None, None
+    
+    # Define delay range bins (in minutes)
+    bins = [5, 7, 9, 11, 13, 15, 18, 22, float('inf')]
+    labels = ['5-7', '7-9', '9-11', '11-13', '13-15', '15-18', '18-22', '22+']
+    
+    # Create delay range categories
+    filtered_df = filtered_df.copy()
+    filtered_df['delay_range'] = pd.cut(
+        filtered_df['avg_delay_minutes'], 
+        bins=bins, 
+        labels=labels, 
+        right=False
+    )
+    
+    # Count occurrences by year and delay range
+    delay_counts = filtered_df.groupby(['year', 'delay_range']).size().reset_index(name='count')
+    
+    # Pivot for easier plotting
+    delay_pivot = delay_counts.pivot(index='delay_range', columns='year', values='count').fillna(0)
+    
+    # Create the plot
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    # Define colors for years
+    colors = plt.cm.Set1(np.linspace(0, 1, len(selected_years)))
+    
+    # Create grouped bar chart
+    x = np.arange(len(labels))
+    width = 0.8 / len(selected_years)
+    
+    for i, year in enumerate(selected_years):
+        if year in delay_pivot.columns:
+            values = delay_pivot[year].values
+            bars = ax.bar(x + i * width, values, width, 
+                         label=str(year), color=colors[i], alpha=0.8)
+            
+            # Add value labels on bars (only for values > 0)
+            for j, bar in enumerate(bars):
+                height = bar.get_height()
+                if height > 0:
+                    ax.text(bar.get_x() + bar.get_width()/2., height + 0.5,
+                           f'{int(height)}',
+                           ha='center', va='bottom', fontsize=9, fontweight='bold')
+    
+    ax.set_title('Distribution of Daily Average Delay Ranges by Year', 
+                fontsize=16, fontweight='bold')
+    ax.set_xlabel('Daily Average Delay Range (minutes)', fontsize=12)
+    ax.set_ylabel('Number of Days', fontsize=12)
+    ax.set_xticks(x + width * (len(selected_years) - 1) / 2)
+    ax.set_xticklabels(labels, rotation=0)
+    ax.legend(title='Year', title_fontsize=12)
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    plt.tight_layout()
+    return fig, delay_pivot
+
+def plot_delay_pattern_heatmap(df, selected_years):
+    """
+    Create a heatmap showing delay range patterns by year and month.
+    """
+    # Filter data for selected years
+    filtered_df = df[df['year'].isin(selected_years)]
+    
+    if filtered_df.empty:
+        return None
+    
+    # Define delay range bins
+    bins = [5, 8, 11, 14, 17, 20, float('inf')]
+    labels = ['5-8', '8-11', '11-14', '14-17', '17-20', '20+']
+    
+    # Create delay range categories
+    filtered_df = filtered_df.copy()
+    filtered_df['delay_range'] = pd.cut(
+        filtered_df['avg_delay_minutes'], 
+        bins=bins, 
+        labels=labels, 
+        right=False
+    )
+    
+    # Count by year-month and delay range
+    heatmap_data = filtered_df.groupby(['year', 'month', 'delay_range']).size().reset_index(name='count')
+    
+    # Create year-month column
+    heatmap_data['year_month'] = heatmap_data['year'].astype(str) + '-' + heatmap_data['month'].astype(str).str.zfill(2)
+    
+    # Pivot for heatmap
+    heatmap_pivot = heatmap_data.pivot_table(
+        index='delay_range', 
+        columns='year_month', 
+        values='count', 
+        fill_value=0
+    )
+    
+    # Convert to integers to fix formatting issue
+    heatmap_pivot = heatmap_pivot.astype(int)
+    
+    # Create the heatmap
+    fig, ax = plt.subplots(figsize=(16, 8))
+    
+    # Create heatmap with proper formatting
+    sns.heatmap(
+        heatmap_pivot, 
+        annot=True, 
+        fmt='d', 
+        cmap='YlOrRd',
+        ax=ax,
+        cbar_kws={'label': 'Number of Days'},
+        linewidths=0.5
+    )
+    
+    ax.set_title('Delay Range Patterns by Year-Month', fontsize=16, fontweight='bold')
+    ax.set_xlabel('Year-Month', fontsize=12)
+    ax.set_ylabel('Daily Average Delay Range (minutes)', fontsize=12)
+    
+    # Rotate x-axis labels for better readability
+    plt.xticks(rotation=45, ha='right')
+    
+    plt.tight_layout()
+    return fig
+
+def plot_delay_violin_distribution(df, selected_years):
+    """
+    Create violin plots showing the distribution shape of daily average delays by year.
+    """
+    # Filter data for selected years
+    filtered_df = df[df['year'].isin(selected_years)]
+    
+    if filtered_df.empty:
+        return None
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Create violin plot
+    violin_parts = ax.violinplot([filtered_df[filtered_df['year'] == year]['avg_delay_minutes'].values 
+                                 for year in selected_years], 
+                                positions=range(len(selected_years)),
+                                showmeans=True, showmedians=True)
+    
+    # Customize violin colors
+    colors = plt.cm.Set1(np.linspace(0, 1, len(selected_years)))
+    for i, pc in enumerate(violin_parts['bodies']):
+        pc.set_facecolor(colors[i])
+        pc.set_alpha(0.7)
+    
+    # Set labels
+    ax.set_title('Distribution of Daily Average Delays by Year', fontsize=16, fontweight='bold')
+    ax.set_xlabel('Year', fontsize=12)
+    ax.set_ylabel('Daily Average Delay (minutes)', fontsize=12)
+    ax.set_xticks(range(len(selected_years)))
+    ax.set_xticklabels([str(year) for year in selected_years])
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # Add statistics text
+    stats_text = []
+    for year in selected_years:
+        year_data = filtered_df[filtered_df['year'] == year]['avg_delay_minutes']
+        median_val = year_data.median()
+        mode_val = year_data.mode().iloc[0] if not year_data.mode().empty else "N/A"
+        stats_text.append(f"{year}: Median={median_val:.1f}min")
+    
+    ax.text(0.02, 0.98, '\n'.join(stats_text), transform=ax.transAxes, fontsize=10,
+           verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.7))
+    
+    plt.tight_layout()
+    return fig
+
 # Main application
 def main():
     st.title("🗺️ Railway Delay Analysis Dashboard")
@@ -663,8 +840,61 @@ def main():
         st.markdown("### Yearly Comparison")
         st.markdown("Compare overall performance metrics across different years.")
         
+        # Original yearly comparison charts
+        st.markdown("#### Overall Performance Metrics")
         fig6 = plot_yearly_comparison(filtered_monthly_summary)
         st.pyplot(fig6)
+        
+        # NEW: Delay Distribution Analysis
+        st.markdown("#### Most Common Daily Average Delay Ranges")
+        st.markdown("""
+        This analysis shows what delay durations were most common on a day-to-day basis for each year. 
+        For example, if 2020 has a high bar in the '9-11' range, it means many days that year had average delays between 9-11 minutes.
+        """)
+        
+        # Filter daily data for selected years
+        filtered_daily_df = df[df['year'].isin(selected_years)]
+        
+        if not filtered_daily_df.empty:
+            # Distribution bar chart
+            fig_dist, delay_pivot = plot_daily_delay_distribution(filtered_daily_df, selected_years)
+            if fig_dist:
+                st.pyplot(fig_dist)
+                
+                # Show insights
+                st.markdown("##### 📊 Key Insights")
+                insights_cols = st.columns(len(selected_years))
+                
+                for i, year in enumerate(selected_years):
+                    with insights_cols[i]:
+                        if year in delay_pivot.columns:
+                            year_data = delay_pivot[year]
+                            most_common_range = year_data.idxmax()
+                            most_common_count = year_data.max()
+                            
+                            st.metric(
+                                label=f"🎯 {year} Most Common Range",
+                                value=f"{most_common_range} min",
+                                delta=f"{int(most_common_count)} days"
+                            )
+            
+            # Violin plot for distribution shape
+            st.markdown("#### Distribution Shape Analysis")
+            st.markdown("Violin plots show the full distribution shape of daily average delays, revealing patterns beyond just averages.")
+            
+            fig_violin = plot_delay_violin_distribution(filtered_daily_df, selected_years)
+            if fig_violin:
+                st.pyplot(fig_violin)
+            
+            # Heatmap for monthly patterns
+            st.markdown("#### Monthly Delay Range Patterns")
+            st.markdown("This heatmap reveals seasonal patterns in delay ranges across different months and years.")
+            
+            fig_heatmap = plot_delay_pattern_heatmap(filtered_daily_df, selected_years)
+            if fig_heatmap:
+                st.pyplot(fig_heatmap)
+        else:
+            st.warning("⚠️ No daily data available for the selected years.")
     
     elif plot_key == "day_of_week":
         st.markdown("### Day of the Week Delay Analysis")
