@@ -710,7 +710,7 @@ def parse_common_delays(df):
     
     return pd.DataFrame(parsed_data)
 
-def plot_most_common_delay_values(df, selected_years, top_n=15):
+def plot_most_common_delay_values(df, selected_years, top_n=50):
     """
     Create a word cloud showing the most frequently occurring delay values across all selected years.
     """
@@ -721,7 +721,7 @@ def plot_most_common_delay_values(df, selected_years, top_n=15):
     if parsed_delays.empty:
         return None, None
     
-    # Count frequency of each delay value across all days
+    # Count frequency of each delay value across all days - increased to show more values
     delay_counts = parsed_delays['delay_value'].value_counts().head(top_n)
     
     if delay_counts.empty:
@@ -752,18 +752,21 @@ def plot_most_common_delay_values(df, selected_years, top_n=15):
         else:
             return f"rgb(139, 0, 0)"    # Dark red for very long delays
     
-    # Generate word cloud
+    # Generate word cloud with denser parameters
     wordcloud = WordCloud(
-        width=1400, 
-        height=700,
+        width=1000,  # Reduced width for denser packing
+        height=600,  # Reduced height for denser packing
         background_color='white',
         max_words=top_n,
-        relative_scaling=0.5,
-        min_font_size=20,
-        max_font_size=120,
+        relative_scaling=0.3,  # Reduced to make size differences less dramatic
+        min_font_size=25,      # Increased minimum font size
+        max_font_size=100,      # Reduced maximum font size
         color_func=delay_color_func,
-        prefer_horizontal=0.7,
-        random_state=42
+        prefer_horizontal=0.5, # More balanced horizontal/vertical
+        random_state=42,
+        collocations=False,    # Prevent word combinations
+        margin=5,              # Reduced margin for tighter packing
+        scale=2                # Higher resolution for better quality
     ).generate_from_frequencies(wordcloud_dict)
     
     # Display word cloud
@@ -773,13 +776,13 @@ def plot_most_common_delay_values(df, selected_years, top_n=15):
                 fontsize=16, fontweight='bold', pad=20)
     
     # Add color legend
-    legend_elements = [
-        plt.Rectangle((0,0),1,1, facecolor='green', alpha=0.7, label='≤6 min (Short)'),
-        plt.Rectangle((0,0),1,1, facecolor='orange', alpha=0.7, label='7-10 min (Medium)'),
-        plt.Rectangle((0,0),1,1, facecolor='red', alpha=0.7, label='11-15 min (Long)'),
-        plt.Rectangle((0,0),1,1, facecolor='darkred', alpha=0.7, label='>15 min (Very Long)')
-    ]
-    ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.98, 0.98))
+    #legend_elements = [
+    #    plt.Rectangle((0,0),1,1, facecolor='green', alpha=0.7, label='≤6 min (Short)'),
+    #    plt.Rectangle((0,0),1,1, facecolor='orange', alpha=0.7, label='7-10 min (Medium)'),
+    #    plt.Rectangle((0,0),1,1, facecolor='red', alpha=0.7, label='11-15 min (Long)'),
+    #    plt.Rectangle((0,0),1,1, facecolor='darkred', alpha=0.7, label='>15 min (Very Long)')
+    #]
+    #ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.98, 0.98))
     
     plt.tight_layout()
     return fig, delay_counts
@@ -1219,7 +1222,7 @@ def main():
                     💡 **Word Cloud Guide:**
                     - **Size**: Larger text = more frequent delays
                     - **Colors**: 🟢 Green (≤6min) → 🟠 Orange (7-10min) → 🔴 Red (11-15min) → 🔵 Dark Red (>15min)
-                    - **Position**: Random placement for visual appeal
+                    - **Density**: More delay values packed together for comprehensive view
                     """)
                 else:
                     st.warning("No common delay data available for visualization.")
