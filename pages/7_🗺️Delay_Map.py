@@ -5,6 +5,9 @@ import seaborn as sns
 import numpy as np
 import os
 from datetime import datetime
+from ast import literal_eval
+from collections import Counter
+from wordcloud import WordCloud
 
 # Page configuration
 st.set_page_config(
@@ -53,6 +56,11 @@ def load_delay_data():
         if missing_columns:
             st.error(f"Missing required columns: {missing_columns}")
             return None
+        
+        # Check if the new top_10_common_delays column exists
+        has_common_delays = 'top_10_common_delays' in df.columns
+        if not has_common_delays:
+            st.warning("⚠️ The 'top_10_common_delays' column is not available in this dataset. Some advanced analyses will be skipped.")
             
         # Create date column for easier analysis
         df['date'] = pd.to_datetime(df[['year', 'month', 'day_of_month']].rename(columns={'day_of_month': 'day'}))
@@ -654,6 +662,303 @@ def plot_delay_violin_distribution(df, selected_years):
     plt.tight_layout()
     return fig
 
+def parse_common_delays(df):
+    """
+    Parse the top_10_common_delays column and return a DataFrame with expanded delay values.
+    """
+    parsed_data = []
+    
+    for idx, row in df.iterrows():
+        if pd.notna(row.get('top_10_common_delays')):
+            try:
+                # Parse the string representation of the list
+                delay_list_str = str(row['top_10_common_delays']).strip()
+                
+                # Skip empty or invalid strings
+                if not delay_list_str or delay_list_str in ['nan', 'None', '[]', '']:
+                    continue
+                
+                delay_list = literal_eval(delay_list_str)
+                
+                # Make sure it's a list
+                if not isinstance(delay_list, list):
+                    continue
+                
+                # Add each delay value with its position in the top 10
+                for position, delay_value in enumerate(delay_list, 1):
+                    # Make sure delay_value is numeric
+                    try:
+                        delay_value = float(delay_value)
+                        if pd.isna(delay_value):
+                            continue
+                    except (ValueError, TypeError):
+                        continue
+                        
+                    parsed_data.append({
+                        'date': row['date'] if 'date' in row else f"{row['year']}-{row['month']:02d}-{row['day_of_month']:02d}",
+                        'year': row['year'],
+                        'month': row['month'],
+                        'day_of_month': row['day_of_month'],
+                        'day_of_week': row['day_of_week'],
+                        'delay_value': delay_value,
+                        'position_in_top10': position,
+                        'total_delays_that_day': row['delay_count_by_day']
+                    })
+            except Exception as e:
+                # Skip rows where parsing fails
+                continue
+    
+    return pd.DataFrame(parsed_data)
+
+def plot_most_common_delay_values(df, selected_years, top_n=15):
+    """
+    Create a word cloud showing the most frequently occurring delay values across all selected years.
+    """
+    # Filter data and parse common delays
+    filtered_df = df[df['year'].isin(selected_years)]
+    parsed_delays = parse_common_delays(filtered_df)
+    
+    if parsed_delays.empty:
+        return None, None
+    
+    # Count frequency of each delay value across all days
+    delay_counts = parsed_delays['delay_value'].value_counts().head(top_n)
+    
+    if delay_counts.empty:
+        return None, None
+    
+    # Create word cloud data - use just the number
+    wordcloud_dict = {}
+    for delay_val, count in delay_counts.items():
+        # Use just the number as text
+        delay_text = str(int(delay_val))
+        wordcloud_dict[delay_text] = count
+    
+    # Create word cloud
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    # Custom colormap - use colors that represent delay severity
+    def delay_color_func(word, font_size, position, orientation, random_state=None, **kwargs):
+        # Extract delay value from word (it's already just the number)
+        delay_val = int(word)
+        
+        # Color based on delay severity: green for short delays, red for long delays
+        if delay_val <= 6:
+            return f"rgb(34, 139, 34)"  # Green for short delays
+        elif delay_val <= 10:
+            return f"rgb(255, 165, 0)"  # Orange for medium delays  
+        elif delay_val <= 15:
+            return f"rgb(255, 69, 0)"   # Red-orange for longer delays
+        else:
+            return f"rgb(139, 0, 0)"    # Dark red for very long delays
+    
+    # Generate word cloud
+    wordcloud = WordCloud(
+        width=1400, 
+        height=700,
+        background_color='white',
+        max_words=top_n,
+        relative_scaling=0.5,
+        min_font_size=20,
+        max_font_size=120,
+        color_func=delay_color_func,
+        prefer_horizontal=0.7,
+        random_state=42
+    ).generate_from_frequencies(wordcloud_dict)
+    
+    # Display word cloud
+    ax.imshow(wordcloud, interpolation='bilinear')
+    ax.axis('off')
+    ax.set_title(f'Most Frequently Occurring Delay Values (minutes) ({create_year_range_string(selected_years)})', 
+                fontsize=16, fontweight='bold', pad=20)
+    
+    # Add color legend
+    legend_elements = [
+        plt.Rectangle((0,0),1,1, facecolor='green', alpha=0.7, label='≤6 min (Short)'),
+        plt.Rectangle((0,0),1,1, facecolor='orange', alpha=0.7, label='7-10 min (Medium)'),
+        plt.Rectangle((0,0),1,1, facecolor='red', alpha=0.7, label='11-15 min (Long)'),
+        plt.Rectangle((0,0),1,1, facecolor='darkred', alpha=0.7, label='>15 min (Very Long)')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.98, 0.98))
+    
+    plt.tight_layout()
+    return fig, delay_counts
+
+def plot_delay_value_by_position(df, selected_years):
+    """
+    Show which delay values appear most frequently in each position of the top 10.
+    """
+    # Filter data and parse common delays
+    filtered_df = df[df['year'].isin(selected_years)]
+    parsed_delays = parse_common_delays(filtered_df)
+    
+    if parsed_delays.empty:
+        return None
+    
+    # Get the most common delay values for positions 1-5 (top 5 positions)
+    position_analysis = parsed_delays[parsed_delays['position_in_top10'] <= 5].groupby(
+        ['position_in_top10', 'delay_value']
+    ).size().reset_index(name='frequency')
+    
+    # Get top 3 delay values for each position
+    top_delays_by_position = position_analysis.groupby('position_in_top10').apply(
+        lambda x: x.nlargest(3, 'frequency')
+    ).reset_index(drop=True)
+    
+    if top_delays_by_position.empty:
+        return None
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Create a pivot table for easier plotting
+    pivot_data = top_delays_by_position.pivot_table(
+        index='delay_value', 
+        columns='position_in_top10', 
+        values='frequency', 
+        fill_value=0
+    )
+    
+    # Convert to integers to fix formatting issue
+    pivot_data = pivot_data.astype(int)
+    
+    # Create heatmap
+    sns.heatmap(pivot_data, annot=True, fmt='d', cmap='YlOrRd', 
+                ax=ax, cbar_kws={'label': 'Frequency'})
+    
+    ax.set_title(f'Delay Values by Position in Daily Top 10 ({create_year_range_string(selected_years)})', 
+                fontsize=16, fontweight='bold')
+    ax.set_xlabel('Position in Daily Top 10', fontsize=12)
+    ax.set_ylabel('Delay Value (minutes)', fontsize=12)
+    
+    plt.tight_layout()
+    return fig
+
+def plot_common_delays_by_month(df, selected_years):
+    """
+    Show seasonal patterns in the most common delay values.
+    """
+    # Filter data and parse common delays
+    filtered_df = df[df['year'].isin(selected_years)]
+    parsed_delays = parse_common_delays(filtered_df)
+    
+    if parsed_delays.empty:
+        return None
+    
+    # Focus on the most common delay values overall
+    top_delay_values = parsed_delays['delay_value'].value_counts().head(8).index
+    
+    # Filter for these top delay values and count by month
+    monthly_delay_patterns = parsed_delays[
+        parsed_delays['delay_value'].isin(top_delay_values)
+    ].groupby(['month', 'delay_value']).size().reset_index(name='frequency')
+    
+    if monthly_delay_patterns.empty:
+        return None
+    
+    # Create pivot table for heatmap
+    pivot_monthly = monthly_delay_patterns.pivot_table(
+        index='delay_value', 
+        columns='month', 
+        values='frequency', 
+        fill_value=0
+    )
+    
+    # Convert to integers to fix formatting issue
+    pivot_monthly = pivot_monthly.astype(int)
+    
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # Create heatmap
+    sns.heatmap(pivot_monthly, annot=True, fmt='d', cmap='YlOrRd', 
+                ax=ax, cbar_kws={'label': 'Frequency in Top 10'})
+    
+    ax.set_title(f'Seasonal Patterns of Most Common Delay Values ({create_year_range_string(selected_years)})', 
+                fontsize=16, fontweight='bold')
+    ax.set_xlabel('Month', fontsize=12)
+    ax.set_ylabel('Delay Value (minutes)', fontsize=12)
+    
+    # Set month labels
+    month_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    if len(pivot_monthly.columns) > 0:
+        ax.set_xticklabels([month_labels[i-1] for i in sorted(pivot_monthly.columns)])
+    
+    plt.tight_layout()
+    return fig
+
+def plot_delay_consistency_analysis(df, selected_years):
+    """
+    Analyze how consistent the top delay values are across different years.
+    """
+    # Filter data and parse common delays
+    filtered_df = df[df['year'].isin(selected_years)]
+    parsed_delays = parse_common_delays(filtered_df)
+    
+    if parsed_delays.empty or len(selected_years) < 2:
+        return None
+    
+    # Get top delay values for each year
+    yearly_top_delays = {}
+    for year in selected_years:
+        year_delays = parsed_delays[parsed_delays['year'] == year]
+        top_delays = year_delays['delay_value'].value_counts().head(10)
+        yearly_top_delays[year] = set(top_delays.index)
+    
+    # Find common delay values across all years
+    if len(selected_years) >= 2:
+        common_delays = set.intersection(*yearly_top_delays.values())
+        
+        # Create comparison data
+        comparison_data = []
+        for delay_val in sorted(common_delays):
+            row = {'delay_value': delay_val}
+            for year in selected_years:
+                year_delays = parsed_delays[
+                    (parsed_delays['year'] == year) & 
+                    (parsed_delays['delay_value'] == delay_val)
+                ]
+                row[f'frequency_{year}'] = len(year_delays)
+            comparison_data.append(row)
+        
+        comparison_df = pd.DataFrame(comparison_data)
+        
+        if not comparison_df.empty:
+            fig, ax = plt.subplots(figsize=(12, 8))
+            
+            # Create grouped bar chart
+            x = np.arange(len(comparison_df))
+            width = 0.8 / len(selected_years)
+            
+            colors = plt.cm.Set1(np.linspace(0, 1, len(selected_years)))
+            
+            for i, year in enumerate(selected_years):
+                col_name = f'frequency_{year}'
+                if col_name in comparison_df.columns:
+                    bars = ax.bar(x + i * width, comparison_df[col_name], 
+                                 width, label=str(year), color=colors[i], alpha=0.8)
+                    
+                    # Add value labels
+                    for bar in bars:
+                        height = bar.get_height()
+                        if height > 0:
+                            ax.text(bar.get_x() + bar.get_width()/2., height + 1,
+                                   f'{int(height)}',
+                                   ha='center', va='bottom', fontsize=9)
+            
+            ax.set_title('Consistency of Most Common Delay Values Across Years', 
+                        fontsize=16, fontweight='bold')
+            ax.set_xlabel('Delay Value (minutes)', fontsize=12)
+            ax.set_ylabel('Frequency in Top 10', fontsize=12)
+            ax.set_xticks(x + width * (len(selected_years) - 1) / 2)
+            ax.set_xticklabels([f'{int(val)}' for val in comparison_df['delay_value']])
+            ax.legend(title='Year')
+            ax.grid(True, alpha=0.3, axis='y')
+            
+            plt.tight_layout()
+            return fig
+    
+    return None
+
 # Main application
 def main():
     st.title("🗺️ Railway Delay Analysis Dashboard")
@@ -893,6 +1198,90 @@ def main():
             fig_heatmap = plot_delay_pattern_heatmap(filtered_daily_df, selected_years)
             if fig_heatmap:
                 st.pyplot(fig_heatmap)
+            
+            # NEW: Common Delay Values Analysis
+            if 'top_10_common_delays' in filtered_daily_df.columns:
+                st.markdown("#### Most Common Specific Delay Values")
+                st.markdown("""
+                This analysis examines the specific delay durations that occur most frequently each day. 
+                The word cloud shows which exact delay values (e.g., 5, 6, 7 minutes) are most problematic across the railway system,
+                with larger text indicating more frequent delays and colors representing delay severity.
+                """)
+                
+                # Most frequently occurring delay values - now as word cloud
+                st.markdown("##### 🎯 Most Frequently Occurring Delay Values")
+                fig_common, delay_counts = plot_most_common_delay_values(filtered_daily_df, selected_years)
+                if fig_common:
+                    st.pyplot(fig_common)
+                    
+                    # Add explanation of the word cloud
+                    st.info("""
+                    💡 **Word Cloud Guide:**
+                    - **Size**: Larger text = more frequent delays
+                    - **Colors**: 🟢 Green (≤6min) → 🟠 Orange (7-10min) → 🔴 Red (11-15min) → 🔵 Dark Red (>15min)
+                    - **Position**: Random placement for visual appeal
+                    """)
+                else:
+                    st.warning("No common delay data available for visualization.")
+                
+                # Position analysis
+                st.markdown("##### 📊 Delay Values by Position in Daily Rankings")
+                st.markdown("This shows which delay values most commonly appear in each position of the daily top 10 rankings.")
+                
+                fig_position = plot_delay_value_by_position(filtered_daily_df, selected_years)
+                if fig_position:
+                    st.pyplot(fig_position)
+                else:
+                    st.warning("No position ranking data available for visualization.")
+                
+                # Seasonal patterns in common delays
+                st.markdown("##### 🌦️ Seasonal Patterns of Common Delay Values")
+                st.markdown("This heatmap shows how different delay values vary by season, revealing weather-related patterns.")
+                
+                fig_seasonal_delays = plot_common_delays_by_month(filtered_daily_df, selected_years)
+                if fig_seasonal_delays:
+                    st.pyplot(fig_seasonal_delays)
+                else:
+                    st.warning("No seasonal delay pattern data available for visualization.")
+                
+                # Year-over-year consistency (only if multiple years selected)
+                if len(selected_years) > 1:
+                    st.markdown("##### 🔄 Consistency Across Years")
+                    st.markdown("This analysis shows how consistent the most problematic delay values are across different years.")
+                    
+                    fig_consistency = plot_delay_consistency_analysis(filtered_daily_df, selected_years)
+                    if fig_consistency:
+                        st.pyplot(fig_consistency)
+                    else:
+                        st.info("No common delay values found across all selected years for comparison.")
+                
+                # Summary statistics for common delays
+                st.markdown("##### 📈 Common Delay Statistics")
+                
+                # Parse all common delays for statistics
+                parsed_delays = parse_common_delays(filtered_daily_df)
+                if not parsed_delays.empty:
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        most_common_delay = parsed_delays['delay_value'].mode().iloc[0]
+                        st.metric("Most Common Delay Value", f"{int(most_common_delay)} min")
+                    
+                    with col2:
+                        unique_delay_values = parsed_delays['delay_value'].nunique()
+                        st.metric("Unique Delay Values", f"{unique_delay_values}")
+                    
+                    with col3:
+                        avg_delay_in_top10 = parsed_delays['delay_value'].mean()
+                        st.metric("Average Delay in Top 10", f"{avg_delay_in_top10:.1f} min")
+                    
+                    with col4:
+                        max_delay_in_top10 = parsed_delays['delay_value'].max()
+                        st.metric("Max Delay in Top 10", f"{int(max_delay_in_top10)} min")
+                else:
+                    st.warning("No valid common delay data found for statistics calculation.")
+            else:
+                st.info("⚠️ Common delay values analysis not available - missing 'top_10_common_delays' column in dataset.")
         else:
             st.warning("⚠️ No daily data available for the selected years.")
     
