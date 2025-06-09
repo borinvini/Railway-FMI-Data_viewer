@@ -49,6 +49,50 @@ def count_preprocessed_data_lines():
     
     return total_count, file_counts
 
+def load_and_display_log_file(log_filename, step_title):
+    """
+    Load and display a log file in Streamlit using an expandable section.
+    
+    Args:
+        log_filename: Name of the log file to load
+        step_title: Title of the step for the expander label
+    """
+    log_path = os.path.join("data", "ai_results", "by_month", "log", log_filename)
+    
+    if not os.path.exists(log_path):
+        with st.expander(f"📋 View {step_title} Log Details", expanded=False):
+            st.warning(f"⚠️ Log file `{log_filename}` not found at `{log_path}`.")
+        return
+    
+    try:
+        with open(log_path, 'r', encoding='utf-8') as file:
+            log_content = file.read()
+        
+        if log_content.strip():
+            # Use expander for collapsible log content
+            with st.expander(f"📋 View {step_title} Log Details", expanded=False):
+                # Add a brief summary at the top
+                st.markdown(f"**Log File:** `{log_filename}`")
+                
+                # Display log content in a code block for better formatting
+                st.code(log_content, language='text')
+                
+                # Add a download button for the log file
+                st.download_button(
+                    label=f"📥 Download {log_filename}",
+                    data=log_content,
+                    file_name=log_filename,
+                    mime="text/plain",
+                    key=f"download_{log_filename}"
+                )
+        else:
+            with st.expander(f"📋 View {step_title} Log Details", expanded=False):
+                st.info(f"📄 Log file `{log_filename}` is empty.")
+            
+    except Exception as e:
+        with st.expander(f"📋 View {step_title} Log Details", expanded=False):
+            st.error(f"❌ Error reading log file `{log_filename}`: {e}")
+
 def classify_stations_by_region(df):
     """
     Classify train stations into 4 regions using K-means clustering.
@@ -195,7 +239,7 @@ def main():
     st.markdown("## Pipeline Flow")
     st.image("assets/pipeline_flow.png", caption="Pipeline Flow Diagram")
     
-    # Create steps with detailed descriptions
+    # Create steps with detailed descriptions and log file mappings
     steps = [
         {
             "title": "1 - Preprocess Files",
@@ -214,7 +258,9 @@ def main():
                 "We have 2 snow columns: 'Snow depth' (snow data from closest EMS) and 'Snow depth Other' (snow data from other EMS that measures snow)",
                 "Fills missing values in 'Snow depth' using data from 'Snow depth Other' when available",
                 "Drops redundant columns ('Snow depth Other' and 'Snow depth Other Distance')",
-            ]
+            ],
+            "log_file": "merge_snow_depth_columns.log",
+            "log_title": "Snow Depth Data Handling"
         },
         {
             "title": "3 - Clean Missing Values", 
@@ -225,7 +271,9 @@ def main():
                 "Keeps rows with at least one important weather condition present",
                 "Uses zero imputation for precipitation and snow metrics (Precipitation amount, Precipitation intensity, Snow depth)",
                 "Uses median imputation for temperature and continuous variables (Air temperature, Relative humidity, Dew-point temperature, Horizontal visibility)"
-            ]
+            ],
+            "log_file": "handle_missing_values.log",
+            "log_title": "Clean Missing Values"
         },
         {
             "title": "4 - Remove Duplicates",
@@ -234,7 +282,9 @@ def main():
                 "Improves dataset quality by eliminating redundant entries",
                 "Helps ensure model training uses unique examples"
             ],
-            "has_stats": True  # Flag to include the statistics here
+            "has_stats": True,  # Flag to include the statistics here
+            "log_file": "remove_duplicates.log",
+            "log_title": "Remove Duplicates"
         },
         {
             "title": "5 - Scale Numeric Columns",
@@ -242,7 +292,9 @@ def main():
                 "Identifies all numeric columns in the dataframe",
                 "Excludes target variables (differenceInMinutes, differenceInMinutes_offset), boolean features (trainStopping, commercialStop), and missing indicator columns",
                 "Uses StandardScaler to standardize the remaining numeric columns (removes mean, scales to unit variance)"
-            ]
+            ],
+            "log_file": "scale_numeric_columns.log",
+            "log_title": "Scale Numeric Columns"
         },
         {
             "title": "6 - Add Train Delayed Feature",
@@ -311,11 +363,19 @@ def main():
     # Display the pipeline steps
     st.markdown("## AI Pipeline Steps")
     
+    # Add explanation about log indicators
+    st.info("📋 Steps marked with 📋 have log files available. Click on the expandable sections to view detailed processing logs.")
+    
     # Count train schedules in preprocessed files before displaying steps
     total_train_schedules, file_counts = count_preprocessed_data_lines()
     
     for i, step in enumerate(steps):
-        st.subheader(step["title"])
+        # Add log indicator to step title if log file is available
+        step_title = step["title"]
+        if "log_file" in step:
+            step_title += " 📋"
+        
+        st.subheader(step_title)
         
         # Option 1: Custom HTML with reduced spacing
         html_list = '<div style="line-height: 1.2; margin-top: -10px;">'
@@ -324,7 +384,7 @@ def main():
         html_list += '</div>'
         st.markdown(html_list, unsafe_allow_html=True)
         
-        # Add statistics to Step 3 (Remove Duplicates)
+        # Add statistics to Step 4 (Remove Duplicates)
         if "has_stats" in step and step["has_stats"]:
             st.subheader("📊 Training Data Statistics")
             
@@ -382,6 +442,15 @@ def main():
                 st.dataframe(dataset_file[reordered_cols].head(10))
             else:
                 st.warning("⚠️ Dataset file 'preprocessed_data_2023-2024_12.csv' not found")
+        
+        # Load and display log file if this step has one
+        if "log_file" in step:
+            # Use custom log title if available, otherwise extract from step title
+            if "log_title" in step:
+                step_name = step["log_title"]
+            else:
+                step_name = step["title"].split(" - ", 1)[1] if " - " in step["title"] else step["title"]
+            load_and_display_log_file(step["log_file"], step_name)
         
         st.markdown("---")  # Add separator line between steps
     
