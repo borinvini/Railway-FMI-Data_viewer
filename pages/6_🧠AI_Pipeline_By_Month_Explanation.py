@@ -202,23 +202,33 @@ def main():
             "description": [
                 "Loads the CSV file",
                 "Extracts nested data from \"timeTableRows\" column",
-                "Calculates relative_differenceInMinutes based on delay differences between stops",
-                "Keeps relevant columns (differenceInMinutes, relative_differenceInMinutes, cancelled, weather_conditions, trainStopping, commercialStop)",
-                "Expands weather_conditions into separate columns"
+                "Keeps relevant columns (differenceInMinutes, differenceInMinutes_offset, cancelled, weather_conditions, trainStopping, commercialStop)",
+                "Expands weather_conditions into separate columns",
+                "Converts boolean columns to numeric (0/1)",
+                "Optionally filters trains by required stations"
             ]
         },
         {
-            "title": "2 - Clean Missing Values",
+            "title": "2 - Snow Depth Data Handling",
             "description": [
-                "Drops rows with missing values in required columns (differenceInMinutes, cancelled)",
-                "Drops rows only if ALL important weather conditions are missing",
-                "Keeps rows with at least one weather condition present",
-                "Uses zero imputation for precipitation and snow metrics",
-                "Uses median imputation for temperature, humidity, and other continuous variables"
+                "We have 2 snow columns: 'Snow depth' (snow data from closest EMS) and 'Snow depth Other' (snow data from other EMS that measures snow)",
+                "Fills missing values in 'Snow depth' using data from 'Snow depth Other' when available",
+                "Drops redundant columns ('Snow depth Other' and 'Snow depth Other Distance')",
             ]
         },
         {
-            "title": "3 - Remove Duplicates",
+            "title": "3 - Clean Missing Values", 
+            "description": [
+                "Fills missing values in trainStopping and commercialStop columns with 0",
+                "Drops rows with missing values in any required columns (differenceInMinutes, differenceInMinutes_offset, trainDelayed, cancelled)",
+                "Drops rows only if ALL 7 important weather conditions are missing: Air temperature, Relative humidity, Dew-point temperature, Precipitation amount, Precipitation intensity, Snow depth, Horizontal visibility", 
+                "Keeps rows with at least one important weather condition present",
+                "Uses zero imputation for precipitation and snow metrics (Precipitation amount, Precipitation intensity, Snow depth)",
+                "Uses median imputation for temperature and continuous variables (Air temperature, Relative humidity, Dew-point temperature, Horizontal visibility)"
+            ]
+        },
+        {
+            "title": "4 - Remove Duplicates",
             "description": [
                 "Removes identical duplicate rows",
                 "Improves dataset quality by eliminating redundant entries",
@@ -227,47 +237,51 @@ def main():
             "has_stats": True  # Flag to include the statistics here
         },
         {
-            "title": "4 - Scale Numeric Columns",
+            "title": "5 - Scale Numeric Columns",
             "description": [
                 "Identifies all numeric columns in the dataframe",
-                "Excludes target variables (differenceInMinutes, relative_differenceInMinutes) and boolean features (trainStopping, commercialStop)",
+                "Excludes target variables (differenceInMinutes, differenceInMinutes_offset), boolean features (trainStopping, commercialStop), and missing indicator columns",
                 "Uses StandardScaler to standardize the remaining numeric columns (removes mean, scales to unit variance)"
             ]
         },
         {
-            "title": "5 - (OPTIONAL) Add Train Delayed Feature",
+            "title": "6 - Add Train Delayed Feature",
             "description": [
                 "Creates a new binary column 'trainDelayed' based on differenceInMinutes",
-                "Sets trainDelayed to True when differenceInMinutes > 0 (train is delayed)"
+                "Sets trainDelayed to True when differenceInMinutes > 0 (train is delayed)",
+                "Sets trainDelayed to False when differenceInMinutes <= 0 (train is on time or early)",
+                "Positions the new column after differenceInMinutes for logical ordering"
             ]
         },
         {
-            "title": "6 - Select Target Variable",
+            "title": "7 - Select Target Variable",
             "description": [
-                "Accepts a target_feature parameter (one of 'differenceInMinutes', 'relative_differenceInMinutes', 'trainDelayed', or 'cancelled')",
-                "Identifies if the specified target feature exists in the dataframe",
-                "Drops the other target options while keeping the selected one"
+                "Accepts a target_feature parameter (one of 'differenceInMinutes', 'differenceInMinutes_offset', 'trainDelayed', or 'cancelled')",
+                "Validates that the specified target feature exists in the dataframe",
+                "Drops the other target options while keeping the selected one",
+                "Ensures only one target variable remains for model training"
             ]
         },
         {
-            "title": "7 - Save Processed Data",
+            "title": "8 - Save Processed Data",
             "description": [
                 "Creates the output filename using the month_id parameter and save the dataframe in CSV file"
             ]
         },
         {
-            "title": "8 - Split Month Dataset",
+            "title": "9 - Split Month Dataset",
             "description": [
                 "Loads the processed CSV file for the given month_id",
-                "Identifies the target column (differenceInMinutes, trainDelayed, or cancelled)",
+                "Identifies the target column (differenceInMinutes, differenceInMinutes_offset, trainDelayed, or cancelled)",
                 "Splits features (X) and target (y) variables",
-                "Uses stratified splitting for categorical targets, regular splitting for continuous targets",
+                "Uses stratified splitting for categorical targets (trainDelayed, cancelled), regular splitting for continuous targets",
                 "Creates train and test datasets with the specified test_size (default 30%)",
-                "Saves train and test sets as separate CSV files"
+                "Saves train and test sets as separate CSV files with _train.csv and _test.csv suffixes",
+                "Reports distribution statistics for both datasets"
             ]
         },
         {
-            "title": "9 - Training",
+            "title": "10 - Training",
             "description": [
                 "Train the dataset with the target variable for multiple model training approaches",
                 "For regression: uses custom weighted loss functions to focus more on larger magnitude values"
