@@ -282,7 +282,6 @@ def main():
                 "Improves dataset quality by eliminating redundant entries",
                 "Helps ensure model training uses unique examples"
             ],
-            "has_stats": True,  # Flag to include the statistics here
             "log_file": "remove_duplicates.log",
             "log_title": "Remove Duplicates"
         },
@@ -318,7 +317,8 @@ def main():
             "title": "8 - Save Processed Data",
             "description": [
                 "Creates the output filename using the month_id parameter and save the dataframe in CSV file"
-            ]
+            ],
+            "has_stats": True,  # Flag to include the statistics here
         },
         {
             "title": "9 - Split Month Dataset",
@@ -344,11 +344,11 @@ def main():
     # Try to locate and load the dataset file for step 7
     dataset_file = None
     possible_locations = [
-        "data/ai_results/by_month/preprocessed/preprocessed_data_2023-2024_12.csv",
-        "data/preprocessed_data_2023-2024_12.csv",
-        "data/viewers/preprocessed_data_2023-2024_12.csv",
-        "data/ai_results/preprocessed_data_2023-2024_12.csv",
-        "data/ai_results/by_month/preprocessed_data_2023-2024_12.csv"
+        "data/ai_results/by_month/preprocessed/preprocessed_data_2020-2024_12.csv",
+        "data/preprocessed_data_2020-2024_12.csv",
+        "data/viewers/preprocessed_data_2020-2024_12.csv",
+        "data/ai_results/preprocessed_data_2020-2024_12.csv",
+        "data/ai_results/by_month/preprocessed_data_2020-2024_12.csv"
     ]
     
     for location in possible_locations:
@@ -384,7 +384,7 @@ def main():
         html_list += '</div>'
         st.markdown(html_list, unsafe_allow_html=True)
         
-        # Add statistics to Step 4 (Remove Duplicates)
+        # Add statistics to Step 8 (Save Processed Data)
         if "has_stats" in step and step["has_stats"]:
             st.subheader("📊 Training Data Statistics")
             
