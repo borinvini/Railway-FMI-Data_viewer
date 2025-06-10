@@ -87,31 +87,52 @@ def load_feature_importance_data(file_paths):
         return pd.concat(all_data, ignore_index=True)
     return pd.DataFrame()
 
-# UPDATED: Function to read and combine all model metrics data - Focus only on r2
+# UPDATED: Function to read and combine all model metrics data - Check for accuracy or r2
 def load_model_metrics_data(file_paths):
     all_data = []
+    available_metric = None
     
     for file_path in file_paths:
         try:
             df = pd.read_csv(file_path)
             date_label = extract_date_from_filename(file_path)
             
-            # Check if r2 exists in the columns
-            if 'r2' in df.columns:
-                # Create a dataframe with just the r2 metric
-                r2_df = pd.DataFrame({
-                    'Metric': ['r2'],
-                    'Value': [df['r2'].iloc[0]],
+            # Check for accuracy first, then r2
+            metric_found = None
+            metric_value = None
+            
+            if 'accuracy' in df.columns:
+                metric_found = 'accuracy'
+                metric_value = df['accuracy'].iloc[0]
+            elif 'r2' in df.columns:
+                metric_found = 'r2'
+                metric_value = df['r2'].iloc[0]
+            
+            if metric_found:
+                # Store the first metric type we find to ensure consistency
+                if available_metric is None:
+                    available_metric = metric_found
+                elif available_metric != metric_found:
+                    st.warning(f"Inconsistent metrics across files. Expected {available_metric}, found {metric_found} in {file_path}")
+                    continue
+                
+                # Create a dataframe with the found metric
+                metric_df = pd.DataFrame({
+                    'Metric': [metric_found],
+                    'Value': [metric_value],
                     'Period': [date_label]
                 })
-                all_data.append(r2_df)
+                all_data.append(metric_df)
             else:
-                st.warning(f"No r2 metric found in {file_path}")
+                st.warning(f"No accuracy or r2 metric found in {file_path}")
         except Exception as e:
             st.warning(f"Error reading {file_path}: {e}")
     
     if all_data:
-        return pd.concat(all_data, ignore_index=True)
+        combined_df = pd.concat(all_data, ignore_index=True)
+        # Add the available metric type as metadata
+        combined_df.attrs['metric_type'] = available_metric
+        return combined_df
     return pd.DataFrame()
 
 # Function to create a top features bar chart
@@ -208,27 +229,41 @@ def plot_feature_importance_trends(df, selected_features):
     plt.tight_layout()
     return fig
 
-# UPDATED: Function to plot model metrics comparison for a specific period - Focus only on r2
+# UPDATED: Function to plot model metrics comparison for a specific period - Handle accuracy or r2
 def plot_model_metrics_comparison(df, period=None):
+    if df.empty:
+        return None
+    
+    # Get the metric type from dataframe attributes
+    metric_type = getattr(df, 'attrs', {}).get('metric_type', 'unknown')
+    
     if period:
         df_plot = df[df['Period'] == period]
     else:
         # If no period specified, take average across all periods
         df_plot = df.groupby('Metric')['Value'].mean().reset_index()
     
-    # Ensure we're only plotting r2
-    df_plot = df_plot[df_plot['Metric'] == 'r2']
+    # Filter for the available metric
+    df_plot = df_plot[df_plot['Metric'] == metric_type]
+    
+    if df_plot.empty:
+        return None
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(12, 6))
     bars = ax.barh(df_plot['Metric'], df_plot['Value'])
     
     # Add color to bars
+    color = '#1f77b4' if metric_type == 'r2' else '#ff7f0e'  # Blue for r2, orange for accuracy
     for bar in bars:
-        bar.set_color('#1f77b4')  # Set a single color for r2
+        bar.set_color(color)
     
-    ax.set_xlabel('R² Value')
-    ax.set_title(f'Model R² Score' + (f' - {period}' if period else ' (Average across all periods)'))
+    # Set labels based on metric type
+    metric_label = 'R² Value' if metric_type == 'r2' else 'Accuracy'
+    metric_title = 'Model R² Score' if metric_type == 'r2' else 'Model Accuracy Score'
+    
+    ax.set_xlabel(metric_label)
+    ax.set_title(f'{metric_title}' + (f' - {period}' if period else ' (Average across all periods)'))
     
     # Add values on bars
     for i, v in enumerate(df_plot['Value']):
@@ -240,10 +275,19 @@ def plot_model_metrics_comparison(df, period=None):
     plt.tight_layout()
     return fig
 
-# UPDATED: Function to create a heatmap of model metrics across time periods - Focus only on r2
+# UPDATED: Function to create a heatmap of model metrics across time periods - Handle accuracy or r2
 def plot_model_metrics_heatmap(df):
-    # Filter to include only r2
-    df_plot = df[df['Metric'] == 'r2']
+    if df.empty:
+        return None
+    
+    # Get the metric type from dataframe attributes
+    metric_type = getattr(df, 'attrs', {}).get('metric_type', 'unknown')
+    
+    # Filter to include only the available metric
+    df_plot = df[df['Metric'] == metric_type]
+    
+    if df_plot.empty:
+        return None
     
     # Pivot the data to get metrics as rows and periods as columns
     pivot_df = df_plot.pivot_table(index='Metric', columns='Period', values='Value')
@@ -252,10 +296,13 @@ def plot_model_metrics_heatmap(df):
     colors = ["#fff7fb", "#8e0152"]  # Light purple to dark purple
     cmap = LinearSegmentedColormap.from_list("custom_purple", colors, N=100)
     
+    # Set appropriate title and height based on metric type
+    metric_title = 'R² Score Over Time' if metric_type == 'r2' else 'Accuracy Score Over Time'
+    
     # Create the heatmap
     fig, ax = plt.subplots(figsize=(12, 3))  # Reduced height since we only have one metric
     sns.heatmap(pivot_df, cmap=cmap, annot=True, fmt=".3f", linewidths=.5, ax=ax, vmin=0, vmax=1)
-    ax.set_title('R² Score Over Time')
+    ax.set_title(metric_title)
     ax.set_ylabel('Metric')
     ax.set_xlabel('Time Period')
     
@@ -265,10 +312,19 @@ def plot_model_metrics_heatmap(df):
     plt.tight_layout()
     return fig
 
-# UPDATED: Function to create a line chart showing how model metrics change over time - Focus only on r2
+# UPDATED: Function to create a line chart showing how model metrics change over time - Handle accuracy or r2
 def plot_model_metrics_trends(df):
-    # Filter to include only r2
-    df_plot = df[df['Metric'] == 'r2']
+    if df.empty:
+        return None
+    
+    # Get the metric type from dataframe attributes
+    metric_type = getattr(df, 'attrs', {}).get('metric_type', 'unknown')
+    
+    # Filter to include only the available metric
+    df_plot = df[df['Metric'] == metric_type]
+    
+    if df_plot.empty:
+        return None
     
     # Sort the periods chronologically
     pivot_df = df_plot.pivot_table(index='Period', columns='Metric', values='Value')
@@ -278,11 +334,23 @@ def plot_model_metrics_trends(df):
     # Create the plot
     fig, ax = plt.subplots(figsize=(12, 6))
     
-    ax.plot(pivot_df.index, pivot_df['r2'], marker='o', label='R² Score', color='#1f77b4', linewidth=2)
+    # Set labels and colors based on metric type
+    if metric_type == 'r2':
+        metric_label = 'R² Score'
+        metric_ylabel = 'R² Value'
+        metric_title = 'R² Score Trend Over Time'
+        color = '#1f77b4'  # Blue
+    else:  # accuracy
+        metric_label = 'Accuracy Score'
+        metric_ylabel = 'Accuracy Value'
+        metric_title = 'Accuracy Score Trend Over Time'
+        color = '#ff7f0e'  # Orange
+    
+    ax.plot(pivot_df.index, pivot_df[metric_type], marker='o', label=metric_label, color=color, linewidth=2)
     
     ax.set_xlabel('Time Period')
-    ax.set_ylabel('R² Value')
-    ax.set_title('R² Score Trend Over Time')
+    ax.set_ylabel(metric_ylabel)
+    ax.set_title(metric_title)
     ax.legend(loc='best')
     ax.grid(True, alpha=0.3)
     
@@ -422,10 +490,20 @@ def main():
                 st.warning(f"No valid metrics data found for model: {selected_model}")
                 return
             
+            # Get the metric type from the loaded data
+            metric_type = getattr(df, 'attrs', {}).get('metric_type', 'unknown')
+            
             # Show basic information
             st.header(f"Model Metrics Analysis: {selected_model}")
             st.write(f"Found {len(file_paths)} model metrics files")
-            st.info("📊 **Note**: This view is showing only the R² Score (r2) metric which measures how well the model fits the data (0-1, where 1 is perfect).")
+            
+            # Display metric-specific information
+            if metric_type == 'r2':
+                st.info("📊 **Note**: This view is showing the R² Score (r2) metric which measures how well the model fits the data (0-1, where 1 is perfect).")
+            elif metric_type == 'accuracy':
+                st.info("📊 **Note**: This view is showing the Accuracy metric which measures the percentage of correct predictions (0-1, where 1 is 100% accurate).")
+            else:
+                st.warning("⚠️ **Note**: Unknown metric type detected. Please check your data files.")
             
             # Filter options
             st.sidebar.header("Filter Options")
@@ -441,26 +519,37 @@ def main():
             tab1, tab2, tab3 = st.tabs(["Bar Chart", "Heatmap", "Trends"])
             
             with tab1:
-                st.subheader("R² Score Comparison")
+                metric_display_name = "R² Score" if metric_type == 'r2' else "Accuracy Score"
+                st.subheader(f"{metric_display_name} Comparison")
                 period_for_chart = None if selected_period == "All Periods" else selected_period
                 
                 # Add informational text when "All Periods" is selected
                 if selected_period == "All Periods":
-                    st.info("📊 **Note**: When 'All Periods' is selected, the value shown represents the **mean R² score** calculated across all time periods.")
+                    st.info(f"📊 **Note**: When 'All Periods' is selected, the value shown represents the **mean {metric_display_name.lower()}** calculated across all time periods.")
                 
                 fig1 = plot_model_metrics_comparison(df, period_for_chart)
-                st.pyplot(fig1)
+                if fig1:
+                    st.pyplot(fig1)
+                else:
+                    st.error("Could not generate comparison chart.")
             
             with tab2:
-                st.subheader("R² Score Heatmap")
+                metric_display_name = "R² Score" if metric_type == 'r2' else "Accuracy Score"
+                st.subheader(f"{metric_display_name} Heatmap")
                 fig2 = plot_model_metrics_heatmap(df)
-                st.pyplot(fig2)
+                if fig2:
+                    st.pyplot(fig2)
+                else:
+                    st.error("Could not generate heatmap.")
             
             with tab3:
-                st.subheader("R² Score Trends")
+                metric_display_name = "R² Score" if metric_type == 'r2' else "Accuracy Score"
+                st.subheader(f"{metric_display_name} Trends")
                 fig3 = plot_model_metrics_trends(df)
                 if fig3:
                     st.pyplot(fig3)
+                else:
+                    st.error("Could not generate trends chart.")
             
             # Show raw data
             with st.expander("View Raw Data"):
