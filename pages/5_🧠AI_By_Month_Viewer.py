@@ -11,7 +11,7 @@ from matplotlib.colors import LinearSegmentedColormap
 # Page configuration
 st.set_page_config(page_title="AI Analysis Viewer", layout="wide")
 
-# Function to search for feature importance files
+# Function to search for SHAP importance files
 def find_feature_importance_files():
     base_path = "data/ai_results/by_month"
     result = {}
@@ -28,10 +28,10 @@ def find_feature_importance_files():
         st.warning(f"No model directories found in '{base_path}'.")
         return {}
     
-    # For each model directory, find all feature_importance_*.csv files
+    # For each model directory, find all SHAP_feature_importance*.csv files
     for model_dir in model_dirs:
         model_path = os.path.join(base_path, model_dir)
-        feature_files = glob.glob(os.path.join(model_path, "feature_importance_*.csv"))
+        feature_files = glob.glob(os.path.join(model_path, "SHAP_feature_importance*.csv"))
         
         if feature_files:
             result[model_dir] = sorted(feature_files)
@@ -63,14 +63,14 @@ def find_model_metrics_files():
 # Function to extract month-year info from filename
 def extract_date_from_filename(filename):
     # Generalized pattern to extract year-month, ignoring any suffixes
-    # This matches: prefix_YYYY-YYYY_MM_any_suffix.csv and returns just the YYYY-YYYY_MM part
-    match = re.search(r'(?:feature_importance|model_metrics)_?(\d{4}-\d{4})_(\d{2})', os.path.basename(filename))
+    # This matches: SHAP_feature_importance_YYYY-YYYY_MM.csv, feature_importance_YYYY-YYYY_MM.csv, model_metrics_YYYY-YYYY_MM.csv
+    match = re.search(r'(?:SHAP_feature_importance|feature_importance|model_metrics)_?(\d{4}-\d{4})_(\d{2})', os.path.basename(filename))
     if match:
         year_range, month = match.groups()
         return f"{year_range}_{month}"
     return os.path.basename(filename)
 
-# Function to read and combine all feature importance data
+# Function to read and combine all SHAP feature importance data
 def load_feature_importance_data(file_paths):
     all_data = []
     
@@ -79,6 +79,14 @@ def load_feature_importance_data(file_paths):
             df = pd.read_csv(file_path)
             date_label = extract_date_from_filename(file_path)
             df['Period'] = date_label
+            
+            # Rename SHAP_Importance_Abs to Importance for consistency with existing plotting functions
+            if 'SHAP_Importance_Abs' in df.columns:
+                df['Importance'] = df['SHAP_Importance_Abs']
+            elif 'Importance' not in df.columns:
+                st.warning(f"Neither 'SHAP_Importance_Abs' nor 'Importance' column found in {file_path}")
+                continue
+                
             all_data.append(df)
         except Exception as e:
             st.warning(f"Error reading {file_path}: {e}")
@@ -143,23 +151,25 @@ def plot_feature_importance(df, period=None, top_n=10):
         # If no period specified, take average across all periods
         df_plot = df.groupby('Feature')['Importance'].mean().reset_index()
     
-    # Sort by importance and get top N
+    # Sort by importance (already absolute values)
     df_plot = df_plot.sort_values('Importance', ascending=False).head(top_n)
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # Use a consistent color scheme for all bars
     bars = ax.barh(df_plot['Feature'], df_plot['Importance'])
     
     # Add a color gradient
     for i, bar in enumerate(bars):
         bar.set_color(plt.cm.viridis(i/len(bars)))
     
-    ax.set_xlabel('Importance')
-    ax.set_title(f'Top {top_n} Important Features' + (f' - {period}' if period else ' (Average)'))
+    ax.set_xlabel('SHAP Importance (Absolute)')
+    ax.set_title(f'Top {top_n} Most Important Features' + (f' - {period}' if period else ' (Average)'))
     
     # Add values on bars
     for i, v in enumerate(df_plot['Importance']):
-        ax.text(v + 0.01, i, f'{v:.4f}', va='center')
+        ax.text(v + 0.005, i, f'{v:.4f}', va='center', ha='left', fontweight='bold')
     
     plt.tight_layout()
     return fig
@@ -173,7 +183,7 @@ def plot_feature_importance_heatmap(df, selected_features=None):
     if selected_features and len(selected_features) > 0:
         pivot_df = pivot_df.loc[selected_features]
     
-    # Sort features by average importance
+    # Sort features by average importance (already absolute values)
     avg_importance = pivot_df.mean(axis=1)
     pivot_df = pivot_df.loc[avg_importance.sort_values(ascending=False).index]
     
@@ -184,7 +194,7 @@ def plot_feature_importance_heatmap(df, selected_features=None):
     # Create the heatmap
     fig, ax = plt.subplots(figsize=(12, max(8, len(pivot_df) * 0.4)))
     sns.heatmap(pivot_df, cmap=cmap, annot=True, fmt=".3f", linewidths=.5, ax=ax)
-    ax.set_title('Feature Importance Over Time')
+    ax.set_title('SHAP Feature Importance Over Time (Absolute Values)')
     ax.set_ylabel('Feature')
     ax.set_xlabel('Time Period')
     
@@ -213,13 +223,18 @@ def plot_feature_importance_trends(df, selected_features):
     # Create the plot
     fig, ax = plt.subplots(figsize=(12, 6))
     
-    for feature in selected_features:
+    # Use different colors for different features
+    colors = plt.cm.tab10(np.linspace(0, 1, len(selected_features)))
+    
+    for i, feature in enumerate(selected_features):
         if feature in pivot_df.columns:
-            ax.plot(pivot_df.index, pivot_df[feature], marker='o', label=feature)
+            values = pivot_df[feature]
+            ax.plot(pivot_df.index, values, marker='o', label=feature, 
+                   color=colors[i], linewidth=2, markersize=6)
     
     ax.set_xlabel('Time Period')
-    ax.set_ylabel('Importance')
-    ax.set_title('Feature Importance Trends Over Time')
+    ax.set_ylabel('SHAP Importance (Absolute)')
+    ax.set_title('SHAP Feature Importance Trends Over Time')
     ax.legend(loc='best')
     ax.grid(True, alpha=0.3)
     
@@ -380,7 +395,7 @@ def main():
     
     if analysis_type == "Feature Importance":
         if not feature_files:
-            st.error("No feature importance files found. Please check the data directory structure.")
+            st.error("No SHAP feature importance files found. Please check the data directory structure.")
             return
         
         # Sidebar for model selection
@@ -398,8 +413,17 @@ def main():
                 return
             
             # Show basic information
-            st.header(f"Feature Importance Analysis: {selected_model}")
-            st.write(f"Found {len(file_paths)} feature importance files")
+            st.header(f"SHAP Feature Importance Analysis: {selected_model}")
+            st.write(f"Found {len(file_paths)} SHAP feature importance files")
+            
+            # Add explanation about SHAP values
+            st.info("""
+            📊 **SHAP Importance Analysis**: This analysis shows SHAP (SHapley Additive exPlanations) absolute feature importance values 
+            specifically for **delayed trains only**. These values represent the magnitude of each feature's impact on delays, 
+            regardless of whether they increase or decrease delays.
+            - **Higher values**: Features that have a stronger impact on delay predictions
+            - **Lower values**: Features that have less influence on delay predictions
+            """)
             
             # Filter options
             st.sidebar.header("Filter Options")
@@ -414,7 +438,7 @@ def main():
             # Feature selection for trend analysis
             all_features = sorted(df['Feature'].unique())
             
-            # Calculate the average importance across all periods for each feature
+            # Calculate the average importance across all periods for each feature (already absolute values)
             feature_avg_importance = df.groupby('Feature')['Importance'].mean().reset_index()
             
             # Sort by importance and get top 5 features (or all if less than 5)
@@ -443,23 +467,23 @@ def main():
             tab1, tab2, tab3 = st.tabs(["Bar Chart", "Heatmap", "Trends"])
             
             with tab1:
-                st.subheader("Feature Importance Bar Chart")
+                st.subheader("SHAP Feature Importance Bar Chart")
                 period_for_chart = None if selected_period == "All Periods" else selected_period
                 
                 # Add informational text when "All Periods" is selected
                 if selected_period == "All Periods":
-                    st.info("📊 **Note**: When 'All Periods' is selected, the values shown represent the **mean importance** of each feature calculated across all time periods.")
+                    st.info("📊 **Note**: When 'All Periods' is selected, the values shown represent the **mean SHAP absolute importance** of each feature calculated across all time periods.")
                     
                 fig1 = plot_feature_importance(df, period_for_chart, top_n)
                 st.pyplot(fig1)
             
             with tab2:
-                st.subheader("Feature Importance Heatmap")
+                st.subheader("SHAP Feature Importance Heatmap")
                 fig2 = plot_feature_importance_heatmap(df, selected_features if selected_features else None)
                 st.pyplot(fig2)
             
             with tab3:
-                st.subheader("Feature Importance Trends")
+                st.subheader("SHAP Feature Importance Trends")
                 if selected_features:
                     fig3 = plot_feature_importance_trends(df, selected_features)
                     if fig3:
