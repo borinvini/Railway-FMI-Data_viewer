@@ -407,6 +407,7 @@ if date_dict:
                                 "actualTime",
                                 "differenceInMinutes",
                                 "differenceInMinutes_offset",
+                                "differenceInMinutes_eachStation_offset",
                                 "cancelled",
                                 "weather_observations"  # Include weather observations for EMS display
                             ]
