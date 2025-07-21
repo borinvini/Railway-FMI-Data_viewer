@@ -1,12 +1,14 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
+from matplotlib.cm import get_cmap
+from matplotlib.ticker import FuncFormatter
 import seaborn as sns
 import numpy as np
 import os
 from datetime import datetime
 from ast import literal_eval
-from collections import Counter
 from wordcloud import WordCloud
 
 # Page configuration
@@ -154,9 +156,9 @@ def plot_aggregated_normalized_delays(monthly_summary, selected_years):
     fig, ax = plt.subplots(figsize=(12, 7))
     
     # Create color mapping based on delay percentage values (higher delays = warmer colors)
-    norm = plt.Normalize(aggregated_data['aggregated_delay_percentage'].min(), 
+    norm = Normalize(aggregated_data['aggregated_delay_percentage'].min(), 
                         aggregated_data['aggregated_delay_percentage'].max())
-    colors = plt.cm.RdYlGn_r(norm(aggregated_data['aggregated_delay_percentage']))
+    colors = get_cmap('RdYlGn_r')(norm(aggregated_data['aggregated_delay_percentage']))
     
     # Create single bar chart with value-based colors
     bars = ax.bar(aggregated_data['month_label'], aggregated_data['aggregated_delay_percentage'], 
@@ -176,7 +178,7 @@ def plot_aggregated_normalized_delays(monthly_summary, selected_years):
                 ha='center', va='bottom', fontweight='bold', fontsize=10)
     
     # Format y-axis to show percentage
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.1f}%'))
     
     plt.xticks(rotation=0)
     plt.tight_layout()
@@ -234,7 +236,7 @@ def plot_aggregated_seasonal_delays(monthly_summary, selected_years):
                 ha='center', va='bottom', fontweight='bold', fontsize=12)
     
     # Format y-axis to show percentage
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.1f}%'))
     
     plt.xticks(rotation=0)
     plt.tight_layout()
@@ -264,7 +266,7 @@ def plot_delays_per_month_year(monthly_summary):
     ax.grid(True, alpha=0.3, axis='y')
     
     # Format y-axis to show values in thousands
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1000:.1f}K' if x >= 1000 else f'{x:.0f}'))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x/1000:.1f}K' if x >= 1000 else f'{x:.0f}'))
     
     # Rotate x-axis labels if needed
     plt.xticks(rotation=0)
@@ -295,7 +297,7 @@ def plot_normalized_delays(monthly_summary):
     ax.grid(True, alpha=0.3, axis='y')
     
     # Format y-axis to show percentage
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.1f}%'))
     
     # Rotate x-axis labels if needed
     plt.xticks(rotation=0)
@@ -393,7 +395,7 @@ def plot_seasonal_trends(monthly_summary):
     ax1.legend(title='Year')
     
     # Format y-axis to show values in thousands
-    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1000:.1f}K' if x >= 1000 else f'{x:.0f}'))
+    ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x/1000:.1f}K' if x >= 1000 else f'{x:.0f}'))
     
     # Plot 2: Average delay percentage by season
     sns.barplot(data=seasonal_data, x='season', y='monthly_delay_percentage', 
@@ -404,7 +406,7 @@ def plot_seasonal_trends(monthly_summary):
     ax2.legend(title='Year')
     
     # Format y-axis to show percentage
-    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x:.1f}%'))
+    ax2.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.1f}%'))
     
     plt.tight_layout()
     return fig
@@ -430,7 +432,7 @@ def plot_yearly_comparison(monthly_summary):
     ax1.set_title('Total Delays per Year', fontsize=14, fontweight='bold')
     ax1.set_xlabel('Year', fontsize=12)
     ax1.set_ylabel('Total Delays', fontsize=12)
-    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1000:.1f}K'))
+    ax1.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x/1000:.1f}K'))
     
     # Add value labels on bars
     for bar in bars1:
@@ -459,7 +461,7 @@ def plot_yearly_comparison(monthly_summary):
     ax3.set_title('Total Schedules per Year', fontsize=14, fontweight='bold')
     ax3.set_xlabel('Year', fontsize=12)
     ax3.set_ylabel('Total Schedules', fontsize=12)
-    ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1000:.0f}K'))
+    ax3.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x/1000:.0f}K'))
     
     # Add value labels on bars
     for bar in bars3:
@@ -520,7 +522,7 @@ def plot_daily_delay_distribution(df, selected_years):
     fig, ax = plt.subplots(figsize=(14, 8))
     
     # Define colors for years
-    colors = plt.cm.Set1(np.linspace(0, 1, len(selected_years)))
+    colors = get_cmap('Set1')(np.linspace(0, 1, len(selected_years)))
     
     # Create grouped bar chart
     x = np.arange(len(labels))
@@ -635,7 +637,7 @@ def plot_delay_violin_distribution(df, selected_years):
                                 showmeans=True, showmedians=True)
     
     # Customize violin colors
-    colors = plt.cm.Set1(np.linspace(0, 1, len(selected_years)))
+    colors = get_cmap('Set1')(np.linspace(0, 1, len(selected_years)))
     for i, pc in enumerate(violin_parts['bodies']):
         pc.set_facecolor(colors[i])
         pc.set_alpha(0.7)
@@ -932,7 +934,7 @@ def plot_delay_consistency_analysis(df, selected_years):
             x = np.arange(len(comparison_df))
             width = 0.8 / len(selected_years)
             
-            colors = plt.cm.Set1(np.linspace(0, 1, len(selected_years)))
+            colors = get_cmap('Set1')(np.linspace(0, 1, len(selected_years)))
             
             for i, year in enumerate(selected_years):
                 col_name = f'frequency_{year}'
