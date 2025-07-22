@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter, defaultdict
 import numpy as np
+import altair as alt
 
 # Page configuration
 st.set_page_config(
@@ -138,10 +139,10 @@ def extract_causes_from_matched_files(selected_periods):
     st.success(f"✅ Successfully processed {processed_files} data files")
     return pd.DataFrame(all_causes_data)
 
-def plot_causes_by_category(causes_df, mappings, top_n=15):
-    """Create bar plot of delay causes by main category"""
+def prepare_causes_by_category_data(causes_df, mappings, top_n=15):
+    """Prepare data for delay causes by main category chart"""
     if causes_df.empty:
-        return None, None
+        return None
     
     # Count delays by category code
     category_counts = causes_df.groupby('categoryCode').agg({
@@ -156,30 +157,57 @@ def plot_causes_by_category(causes_df, mappings, top_n=15):
         mappings.get('category', {})
     ).fillna('Unknown Category')
     
+    # Create display label
+    category_counts['display_label'] = category_counts.apply(
+        lambda row: f"{row['category_name']} ({row['categoryCode']})", axis=1
+    )
+    
     # Sort by delay count and take top N
     category_counts = category_counts.sort_values('delay_count', ascending=False).head(top_n)
     
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(12, 8))
+    return category_counts
+
+def prepare_detailed_causes_data(causes_df, mappings, top_n=20):
+    """Prepare data for detailed delay causes chart"""
+    if causes_df.empty:
+        return None
     
-    # Count of delays
-    colors = plt.cm.Set3(np.linspace(0, 1, len(category_counts)))
-    bars = ax.barh(range(len(category_counts)), category_counts['delay_count'], color=colors)
-    ax.set_yticks(range(len(category_counts)))
-    ax.set_yticklabels([f"{row['category_name']}\n({row['categoryCode']})" 
-                        for _, row in category_counts.iterrows()], fontsize=10)
-    ax.set_xlabel('Number of Delayed Trains', fontsize=12)
-    ax.set_title(f'Top {top_n} Delay Causes by Frequency', fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3, axis='x')
+    # Filter out rows without detailed category codes
+    detailed_df = causes_df[causes_df['detailedCategoryCode'].notna()]
     
-    # Add value labels
-    for i, bar in enumerate(bars):
-        width = bar.get_width()
-        ax.text(width + width*0.01, bar.get_y() + bar.get_height()/2,
-                f'{int(width):,}', ha='left', va='center', fontweight='bold')
+    if detailed_df.empty:
+        return None
     
-    plt.tight_layout()
-    return fig, category_counts
+    # Count delays by detailed category code
+    detailed_counts = detailed_df.groupby('detailedCategoryCode').agg({
+        'delay_minutes': 'count'
+    }).round(1)
+    
+    detailed_counts.columns = ['delay_count']
+    detailed_counts = detailed_counts.reset_index()
+    
+    # Add detailed category names
+    detailed_counts['detailed_name'] = detailed_counts['detailedCategoryCode'].map(
+        mappings.get('detailed', {})
+    ).fillna('Unknown Detailed Category')
+    
+    # Add main category code (first character of detailed code)
+    detailed_counts['main_category'] = detailed_counts['detailedCategoryCode'].str[0]
+    
+    # Add main category name for context
+    detailed_counts['main_category_name'] = detailed_counts['main_category'].map(
+        mappings.get('category', {})
+    ).fillna('Unknown Main Category')
+    
+    # Create display label with both detailed and main category info
+    detailed_counts['display_label'] = detailed_counts.apply(
+        lambda row: f"{row['detailed_name']} ({row['detailedCategoryCode']})", axis=1
+    )
+    
+    # Sort by delay count and take top N
+    detailed_counts = detailed_counts.sort_values('delay_count', ascending=False).head(top_n)
+    
+    return detailed_counts
 
 def plot_causes_timeline(causes_df, mappings):
     """Create timeline plot showing delay causes over time"""
@@ -671,7 +699,11 @@ def main():
         st.sidebar.markdown("**Chart Controls:**")
         # Get the actual number of categories for dynamic range
         max_categories = causes_df['categoryCode'].nunique() if not causes_df.empty else 50
-        top_n = st.sidebar.slider("Categories to display", min_value=5, max_value=max_categories, value=max_categories, key="main_top_n")
+        top_n = st.sidebar.slider("Main categories to display", min_value=5, max_value=max_categories, value=min(15, max_categories), key="main_top_n")
+        
+        # Add control for detailed categories
+        max_detailed = len(causes_df[causes_df['detailedCategoryCode'].notna()]['detailedCategoryCode'].unique()) if not causes_df.empty else 50
+        detailed_top_n_main = st.sidebar.slider("Detailed categories to display", min_value=10, max_value=min(50, max_detailed), value=min(20, max_detailed), key="detailed_main_top_n")
     elif plot_key == "detailed_breakdown":
         st.sidebar.markdown("---")
         st.sidebar.markdown("**Chart Controls:**")
@@ -680,8 +712,9 @@ def main():
     else:
         # Set default values for other chart types
         max_categories = causes_df['categoryCode'].nunique() if not causes_df.empty else 50
-        top_n = max_categories
+        top_n = min(15, max_categories)
         detailed_top_n = 10
+        detailed_top_n_main = 20
     
     # MAIN CONTENT AREA - Display selected plot
     st.subheader("📈 Delay Causes Analysis")
@@ -689,25 +722,124 @@ def main():
     if plot_key == "main_categories":
         st.markdown("### Top Delay Causes by Category")
         
-        fig_main, category_counts = plot_causes_by_category(causes_df, mappings, top_n)
-        if fig_main:
-            st.pyplot(fig_main)
+        # Main Categories Chart
+        st.markdown("#### Main Categories (A, B, C, etc.)")
+        category_counts = prepare_causes_by_category_data(causes_df, mappings, top_n)
+        if category_counts is not None and not category_counts.empty:
+            # Create Altair chart for main categories
+            main_chart = alt.Chart(category_counts).mark_bar(
+                stroke='black',
+                strokeWidth=1
+            ).encode(
+                x=alt.X('delay_count:Q', 
+                       title='Number of Delayed Trains',
+                       axis=alt.Axis(format=',d')),
+                y=alt.Y('display_label:N', 
+                       sort='-x', 
+                       title='Main Category',
+                       axis=alt.Axis(labelLimit=250)),
+                color=alt.Color('categoryCode:N', 
+                              legend=None, 
+                              scale=alt.Scale(scheme='category20')),
+                tooltip=[
+                    alt.Tooltip('display_label:N', title='Category'),
+                    alt.Tooltip('delay_count:Q', title='Incidents', format=',d'),
+                    alt.Tooltip('categoryCode:N', title='Code')
+                ]
+            ).properties(
+                width='container',
+                height=max(400, len(category_counts) * 35),
+                title=alt.TitleParams(
+                    text=f'Top {top_n} Main Delay Categories by Frequency',
+                    fontSize=16,
+                    fontWeight='bold'
+                )
+            ).resolve_scale(
+                color='independent'
+            )
             
-            # Show insights
+            st.altair_chart(main_chart, use_container_width=True)
+            
+            # Show insights for main categories
             if not category_counts.empty:
                 worst_cause = category_counts.iloc[0]
                 best_cause = category_counts.iloc[-1]
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.success(f"🔴 **Most Frequent**: {worst_cause['category_name']} (Code {worst_cause['categoryCode']}) "
+                    st.success(f"🔴 **Most Frequent Main Category**: {worst_cause['category_name']} (Code {worst_cause['categoryCode']}) "
                               f"- {worst_cause['delay_count']:,} incidents")
                 
                 with col2:
-                    st.info(f"🟢 **Least Frequent**: {best_cause['category_name']} (Code {best_cause['categoryCode']}) "
+                    st.info(f"🟢 **Least Frequent Main Category**: {best_cause['category_name']} (Code {best_cause['categoryCode']}) "
                             f"- {best_cause['delay_count']:,} incidents")
         else:
             st.error("Could not generate main categories plot.")
+        
+        # Add separator
+        st.markdown("---")
+        
+        # Detailed Categories Chart
+        st.markdown("#### Detailed Categories (A1, A2, B1, etc.)")
+        detailed_counts = prepare_detailed_causes_data(causes_df, mappings, detailed_top_n_main)
+        if detailed_counts is not None and not detailed_counts.empty:
+            # Create Altair chart for detailed categories
+            detailed_chart = alt.Chart(detailed_counts).mark_bar(
+                stroke='black',
+                strokeWidth=1
+            ).encode(
+                x=alt.X('delay_count:Q', 
+                       title='Number of Delayed Trains',
+                       axis=alt.Axis(format=',d')),
+                y=alt.Y('display_label:N', 
+                       sort='-x', 
+                       title='Detailed Category',
+                       axis=alt.Axis(labelLimit=300)),
+                color=alt.Color('main_category:N', 
+                              legend=alt.Legend(title="Main Category"),
+                              scale=alt.Scale(scheme='category20')),
+                tooltip=[
+                    alt.Tooltip('display_label:N', title='Detailed Category'),
+                    alt.Tooltip('delay_count:Q', title='Incidents', format=',d'),
+                    alt.Tooltip('detailedCategoryCode:N', title='Detailed Code'),
+                    alt.Tooltip('main_category_name:N', title='Main Category'),
+                    alt.Tooltip('main_category:N', title='Main Code')
+                ]
+            ).properties(
+                width='container',
+                height=max(500, len(detailed_counts) * 25),
+                title=alt.TitleParams(
+                    text=f'Top {detailed_top_n_main} Detailed Delay Categories by Frequency',
+                    fontSize=16,
+                    fontWeight='bold'
+                )
+            )
+            
+            st.altair_chart(detailed_chart, use_container_width=True)
+            
+            # Show insights for detailed categories
+            if not detailed_counts.empty:
+                worst_detailed = detailed_counts.iloc[0]
+                best_detailed = detailed_counts.iloc[-1]
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.success(f"🎯 **Most Frequent Detailed Category**: {worst_detailed['detailed_name']} "
+                              f"({worst_detailed['detailedCategoryCode']}) - {worst_detailed['delay_count']:,} incidents")
+                
+                with col2:
+                    st.info(f"🎯 **Least Frequent Detailed Category**: {best_detailed['detailed_name']} "
+                            f"({best_detailed['detailedCategoryCode']}) - {best_detailed['delay_count']:,} incidents")
+                
+                # Additional insight about main category distribution in detailed view
+                main_category_distribution = detailed_counts.groupby('main_category')['delay_count'].sum().sort_values(ascending=False)
+                if len(main_category_distribution) > 1:
+                    top_main_in_detailed = main_category_distribution.index[0]
+                    top_main_name = mappings.get('category', {}).get(top_main_in_detailed, 'Unknown')
+                    st.info(f"📊 **Dominant Main Category in Top Detailed**: {top_main_name} ({top_main_in_detailed}) "
+                            f"accounts for {main_category_distribution.iloc[0]:,} incidents across its subcategories")
+        else:
+            st.warning("⚠️ No detailed category data available. This could happen if the 'detailedCategoryCode' column is empty in the dataset.")
     
     elif plot_key == "timeline":
         st.markdown("### Delay Causes Over Time")
@@ -715,7 +847,7 @@ def main():
         fig_timeline = plot_causes_timeline(causes_df, mappings)
         if fig_timeline:
             st.pyplot(fig_timeline)
-            st.info("💡 This stacked bar chart shows the distribution of delay causes across different time periods. Each segment represents a different month/year, allowing you to see both the total incidents per category and their temporal distribution.")
+            st.info("💡 This timeline chart shows delay causes across different time periods, focusing on the main categories A, I, K, O, P, S, T, V which represent the most significant delay types.")
         else:
             st.info("⏳ Timeline analysis requires data spanning multiple time periods.")
     
