@@ -422,6 +422,89 @@ if date_dict:
                             st.subheader(f"Time Table for Train **{selected_train_number}** on **{selected_day}**")
                             st.dataframe(timetable_df)
 
+                            # CHECK DELAY STATUS AT FINAL DESTINATION - BEFORE MAP
+                            st.subheader("🏁 Final Destination Status")
+                            
+                            # Find the last station (final destination)
+                            # Sort by scheduled time to get the chronological order
+                            timetable_sorted = timetable_df.copy()
+                            timetable_sorted['scheduledTime'] = pd.to_datetime(timetable_sorted['scheduledTime'], errors='coerce')
+                            timetable_sorted = timetable_sorted.sort_values('scheduledTime')
+                            
+                            # Get the last station entry
+                            last_station = timetable_sorted.iloc[-1]
+                            
+                            # Check if differenceInMinutes column exists and get the delay value
+                            if 'differenceInMinutes' in last_station and pd.notna(last_station['differenceInMinutes']):
+                                delay_minutes = last_station['differenceInMinutes']
+                                station_name = last_station.get('stationName', 'Unknown Station')
+                                station_type = last_station.get('type', 'Unknown')
+                                
+                                # Determine delay status (≥5 minutes is considered delayed)
+                                is_delayed = delay_minutes >= 5
+                                
+                                # Create columns for better layout
+                                col1, col2, col3 = st.columns(3)
+                                
+                                with col1:
+                                    if is_delayed:
+                                        st.markdown("""
+                                        <div style="
+                                            padding: 10px;
+                                            border-radius: 5px;
+                                            background-color: #ffebee;
+                                            border: 2px solid #f44336;
+                                            text-align: center;
+                                        ">
+                                            <h3 style="color: #d32f2f; margin: 0;">🔴 DELAYED</h3>
+                                            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{:.0f} minutes late</p>
+                                        </div>
+                                        """.format(delay_minutes), unsafe_allow_html=True)
+                                    else:
+                                        st.markdown("""
+                                        <div style="
+                                            padding: 10px;
+                                            border-radius: 5px;
+                                            background-color: #e8f5e8;
+                                            border: 2px solid #4caf50;
+                                            text-align: center;
+                                        ">
+                                            <h3 style="color: #2e7d32; margin: 0;">🟢 ON TIME</h3>
+                                            <p style="margin: 5px 0; font-size: 18px; font-weight: bold;">{:.0f} minutes</p>
+                                        </div>
+                                        """.format(delay_minutes), unsafe_allow_html=True)
+                                
+                                with col2:
+                                    st.metric(
+                                        label="Final Station",
+                                        value=station_name,
+                                        delta=f"{station_type}"
+                                    )
+                                
+                                with col3:
+                                    scheduled_time = last_station.get('scheduledTime', 'N/A')
+                                    actual_time = last_station.get('actualTime', 'N/A')
+                                    
+                                    st.markdown(f"""
+                                    **Scheduled Time:** {scheduled_time}  
+                                    **Actual Time:** {actual_time if actual_time != 'N/A' else 'Not recorded'}
+                                    """)
+                                
+                                # Additional context
+                                if is_delayed:
+                                    if delay_minutes >= 15:
+                                        st.warning(f"⚠️ Significant delay detected! Train arrived {delay_minutes:.0f} minutes late at {station_name}.")
+                                    else:
+                                        st.info(f"ℹ️ Minor delay: Train arrived {delay_minutes:.0f} minutes late at {station_name}.")
+                                else:
+                                    if delay_minutes < 0:
+                                        st.success(f"✅ Train arrived {abs(delay_minutes):.0f} minutes early at {station_name}!")
+                                    else:
+                                        st.success(f"✅ Train arrived on time at {station_name}!")
+                            
+                            else:
+                                st.warning("⚠️ Delay information not available for the final destination.")
+
                             # ADD MAP VISUALIZATION HERE - Show train route on map
                             st.subheader(f"Route Map for Train **{selected_train_number}**")
                             

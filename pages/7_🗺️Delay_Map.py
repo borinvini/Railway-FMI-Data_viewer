@@ -7,6 +7,7 @@ from matplotlib.ticker import FuncFormatter
 import seaborn as sns
 import numpy as np
 import os
+import glob
 from datetime import datetime
 from ast import literal_eval
 from wordcloud import WordCloud
@@ -22,8 +23,9 @@ st.set_page_config(
 plt.style.use('default')
 sns.set_palette("husl")
 
-# Constants
-DELAY_TABLE_PATH = "data/viewers/delay_table.csv"
+# Constants - Updated default path
+DELAY_TABLE_DEFAULT_PATH = "data/viewers/delay_maps/delay_table_differenceInMinutes.csv"
+DELAY_MAPS_DIRECTORY = "data/viewers/delay_maps"
 
 # Day of week mapping (1-based indexing as used in the data)
 DAY_OF_WEEK_MAPPING = {
@@ -37,14 +39,29 @@ DAY_OF_WEEK_MAPPING = {
 }
 
 # Helper functions
-def load_delay_data():
-    """Load and validate the delay table data"""
-    if not os.path.exists(DELAY_TABLE_PATH):
-        st.error(f"⚠️ Delay data file not found at: {DELAY_TABLE_PATH}")
+def find_available_delay_files():
+    """Find all available delay table files in the delay_maps directory"""
+    if not os.path.exists(DELAY_MAPS_DIRECTORY):
+        return []
+    
+    # Look for CSV files that start with "delay_table"
+    pattern = os.path.join(DELAY_MAPS_DIRECTORY, "delay_table*.csv")
+    files = glob.glob(pattern)
+    
+    # Return just the filenames, not full paths
+    return [os.path.basename(f) for f in files]
+
+def load_delay_data(file_path=None):
+    """Load and validate the delay table data from specified path"""
+    if file_path is None:
+        file_path = DELAY_TABLE_DEFAULT_PATH
+    
+    if not os.path.exists(file_path):
+        st.error(f"⚠️ Delay data file not found at: {file_path}")
         return None
     
     try:
-        df = pd.read_csv(DELAY_TABLE_PATH)
+        df = pd.read_csv(file_path)
         
         # Validate required columns
         required_columns = [
@@ -777,15 +794,6 @@ def plot_most_common_delay_values(df, selected_years, top_n=50):
     ax.set_title(f'Most Frequently Occurring Delay Values (minutes) ({create_year_range_string(selected_years)})', 
                 fontsize=16, fontweight='bold', pad=20)
     
-    # Add color legend
-    #legend_elements = [
-    #    plt.Rectangle((0,0),1,1, facecolor='green', alpha=0.7, label='≤6 min (Short)'),
-    #    plt.Rectangle((0,0),1,1, facecolor='orange', alpha=0.7, label='7-10 min (Medium)'),
-    #    plt.Rectangle((0,0),1,1, facecolor='red', alpha=0.7, label='11-15 min (Long)'),
-    #    plt.Rectangle((0,0),1,1, facecolor='darkred', alpha=0.7, label='>15 min (Very Long)')
-    #]
-    #ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.98, 0.98))
-    
     plt.tight_layout()
     return fig, delay_counts
 
@@ -968,6 +976,52 @@ def plot_delay_consistency_analysis(df, selected_years):
 def main():
     st.title("🗺️ Railway Delay Analysis Dashboard")
     
+    # FILE SELECTION SECTION
+    st.subheader("📁 Data Source Selection")
+    
+    # Find available delay files
+    available_files = find_available_delay_files()
+    
+    if not available_files:
+        st.error(f"⚠️ No delay table files found in `{DELAY_MAPS_DIRECTORY}`. Please ensure the directory exists and contains delay_table*.csv files.")
+        st.stop()
+    
+    # Set default file
+    default_file = "delay_table_differenceInMinutes.csv"
+    if default_file in available_files:
+        default_index = available_files.index(default_file)
+    else:
+        default_index = 0
+    
+    # File selection interface
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        selected_file = st.selectbox(
+            "Select delay analysis file:",
+            options=available_files,
+            index=default_index,
+            help="Choose which delay analysis dataset to load. Different files may contain different target variables or time periods."
+        )
+    
+    with col2:
+        if st.button("🔄 Refresh File List"):
+            st.experimental_rerun()
+    
+    # Display selected file info
+    selected_file_path = os.path.join(DELAY_MAPS_DIRECTORY, selected_file)
+    
+    # Extract target variable from filename for display
+    target_variable = "Unknown"
+    if "differenceInMinutes" in selected_file:
+        target_variable = "Delay Duration (minutes)"
+    elif "trainDelayed" in selected_file:
+        target_variable = "Delay Occurrence (binary)"
+    elif "cancelled" in selected_file:
+        target_variable = "Cancellation"
+    
+    st.info(f"📊 **Selected Dataset**: `{selected_file}` | **Target Variable**: {target_variable}")
+    
     # Important information about delay definition
     st.info("""
     📋 This analysis considers delays for **long distance trains only** and defines a delay as **5 minutes or higher**. 
@@ -975,7 +1029,7 @@ def main():
     """)
     
     # Load data
-    df = load_delay_data()
+    df = load_delay_data(selected_file_path)
     
     if df is None:
         st.stop()
@@ -1009,6 +1063,11 @@ def main():
     
     # SIDEBAR CONFIGURATION
     st.sidebar.header("🎯 Analysis Configuration")
+    
+    # Show current file in sidebar
+    st.sidebar.markdown(f"**Current File**: `{selected_file}`")
+    st.sidebar.markdown(f"**Target Variable**: {target_variable}")
+    st.sidebar.markdown("---")
     
     # Year selection for plots
     st.sidebar.subheader("Year Selection")
