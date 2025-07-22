@@ -207,39 +207,84 @@ def plot_causes_timeline(causes_df, mappings):
         monthly_causes[['year', 'month']].assign(day=1)
     )
     
-    # Get top 6 categories for cleaner visualization
-    top_categories = causes_df['categoryCode'].value_counts().head(6).index
-    monthly_causes = monthly_causes[monthly_causes['categoryCode'].isin(top_categories)]
+    # Always plot these specific categories: A, I, K, O, P, S, T, V
+    target_categories = ['A', 'I', 'K', 'O', 'P', 'S', 'T', 'V']
+    
+    # Filter for target categories that exist in the data
+    available_target_categories = [cat for cat in target_categories 
+                                 if cat in causes_df['categoryCode'].values]
+    
+    if not available_target_categories:
+        st.warning("⚠️ None of the target categories (A, I, K, O, P, S, T, V) found in the data.")
+        return None
+    
+    # Filter monthly causes for target categories
+    monthly_causes = monthly_causes[monthly_causes['categoryCode'].isin(available_target_categories)]
     
     if monthly_causes.empty:
         return None
+    
+    # Create a complete date range covering all months from min to max date
+    min_date = monthly_causes['date'].min()
+    max_date = monthly_causes['date'].max()
+    
+    # Generate complete monthly date range
+    complete_date_range = pd.date_range(start=min_date, end=max_date, freq='MS')  # MS = Month Start
     
     # Create the plot
     fig, ax = plt.subplots(figsize=(15, 8))
     
     # Use different colors and markers for each category
-    colors = plt.cm.Set1(np.linspace(0, 1, len(top_categories)))
-    markers = ['o', 's', '^', 'D', 'v', '*']
+    colors = plt.cm.Set1(np.linspace(0, 1, len(target_categories)))  # Use all 8 colors consistently
+    markers = ['o', 's', '^', 'D', 'v', '*', 'P', 'X']  # Added more marker styles
     
-    # Plot lines for each category
-    for i, category_code in enumerate(top_categories):
+    # Plot lines for each target category (including categories with no data)
+    for i, category_code in enumerate(target_categories):
         category_data = monthly_causes[monthly_causes['categoryCode'] == category_code]
         category_name = mappings.get('category', {}).get(category_code, f'Code {category_code}')
         
+        # Create a complete series with zeros for all months in the range
+        category_series = pd.Series(0, index=complete_date_range)
+        
+        # Fill in actual values where data exists
         if not category_data.empty:
-            ax.plot(category_data['date'], category_data['delay_count'], 
-                   marker=markers[i % len(markers)], label=f'{category_name} ({category_code})', 
+            for _, row in category_data.iterrows():
+                if row['date'] in category_series.index:
+                    category_series[row['date']] = row['delay_count']
+            
+            # Plot with solid line for categories with data
+            ax.plot(category_series.index, category_series.values, 
+                   marker=markers[i % len(markers)], 
+                   label=f'{category_name} ({category_code})', 
                    linewidth=2, markersize=8, color=colors[i])
+        else:
+            # Plot dashed line for categories with no data
+            ax.plot(category_series.index, category_series.values, 
+                   marker=markers[i % len(markers)], 
+                   label=f'{category_name} ({category_code}) - No data', 
+                   linewidth=1, markersize=6, color=colors[i], alpha=0.5, linestyle='--')
     
     ax.set_xlabel('Time Period', fontsize=12)
     ax.set_ylabel('Number of Delayed Trains', fontsize=12)
-    ax.set_title('Delay Causes Timeline (Top 6 Categories)', fontsize=14, fontweight='bold')
+    ax.set_title('Delay Causes Timeline (Main Categories: A, I, K, O, P, S, T, V)', fontsize=14, fontweight='bold')
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     ax.grid(True, alpha=0.3)
     
-    # Format x-axis
-    plt.xticks(rotation=45)
+    # Format x-axis to show all months
+    ax.set_xticks(complete_date_range)
+    ax.set_xticklabels([date.strftime('%Y-%m') for date in complete_date_range], rotation=45, ha='right')
+    
+    # Ensure all x-axis labels are visible
     plt.tight_layout()
+    
+    # Add information about categories
+    info_text = f"Categories shown: {', '.join(target_categories)}"
+    if len(available_target_categories) < len(target_categories):
+        missing_categories = [cat for cat in target_categories if cat not in available_target_categories]
+        info_text += f"\nMissing categories: {', '.join(missing_categories)}"
+    
+    ax.text(0.02, 0.98, info_text, transform=ax.transAxes, fontsize=10,
+           verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7))
     
     return fig
 
@@ -670,7 +715,7 @@ def main():
         fig_timeline = plot_causes_timeline(causes_df, mappings)
         if fig_timeline:
             st.pyplot(fig_timeline)
-            st.info("💡 This chart shows the top 6 most frequent delay causes over time.")
+            st.info("💡 This stacked bar chart shows the distribution of delay causes across different time periods. Each segment represents a different month/year, allowing you to see both the total incidents per category and their temporal distribution.")
         else:
             st.info("⏳ Timeline analysis requires data spanning multiple time periods.")
     
