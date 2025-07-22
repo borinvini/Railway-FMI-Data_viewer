@@ -516,6 +516,108 @@ if date_dict:
                                 else:
                                     st.error("Could not create map due to missing station coordinate data.")
 
+                            # DELAY CAUSES ANALYSIS - Add this section after map
+                            if 'causes' in timetable_df.columns:
+                                # Get only rows with non-empty causes data
+                                causes_data = timetable_df[
+                                    timetable_df['causes'].notna() & 
+                                    timetable_df['causes'].apply(lambda x: 
+                                        not (isinstance(x, str) and x in ('[]', '{}')) and
+                                        not (isinstance(x, (list, dict)) and len(x) == 0)
+                                    )
+                                ]
+                                
+                                if not causes_data.empty:
+                                    # Load metadata for all levels of delay causes
+                                    metadata_path = os.path.join(VIEWER_FOLDER_NAME, "metadata", "metadata_train_causes.csv")
+                                    detailed_metadata_path = os.path.join(VIEWER_FOLDER_NAME, "metadata", "metadata_train_causes_detailed.csv")
+                                    third_metadata_path = os.path.join(VIEWER_FOLDER_NAME, "metadata", "metadata_third_train_causes.csv")
+                                    
+                                    category_code_map = {}
+                                    detailed_category_code_map = {}
+                                    third_category_code_map = {}
+                                    
+                                    # Load primary category metadata
+                                    if os.path.exists(metadata_path):
+                                        try:
+                                            metadata_df = pd.read_csv(metadata_path)
+                                            # Create mapping from code to meaning
+                                            category_code_map = dict(zip(metadata_df['categoryCode'], metadata_df['categoryName_en']))
+                                        except Exception as e:
+                                            st.warning(f"Error loading delay causes metadata: {e}")
+                                    
+                                    # Load detailed category metadata
+                                    if os.path.exists(detailed_metadata_path):
+                                        try:
+                                            detailed_metadata_df = pd.read_csv(detailed_metadata_path)
+                                            # Create mapping from detailed code to meaning
+                                            detailed_category_code_map = dict(zip(detailed_metadata_df['detailedCategoryCode'], 
+                                                                                detailed_metadata_df['detailedCategoryName_en']))
+                                        except Exception as e:
+                                            st.warning(f"Error loading detailed delay causes metadata: {e}")
+                                    
+                                    # Load third category metadata
+                                    if os.path.exists(third_metadata_path):
+                                        try:
+                                            third_metadata_df = pd.read_csv(third_metadata_path)
+                                            # Create mapping from third code to meaning
+                                            third_category_code_map = dict(zip(third_metadata_df['thirdCategoryCode'], 
+                                                                            third_metadata_df['thirdCategoryName_en']))
+                                        except Exception as e:
+                                            st.warning(f"Error loading third level delay causes metadata: {e}")
+                                    
+                                    st.subheader("🚨 Delay Causes")
+                                    st.write("The following delay causes were reported for this train:")
+                                    
+                                    # Display each cause with its associated station
+                                    for index, row in causes_data.iterrows():
+                                        st.markdown(f"**Station: {row['stationName']} ({row['type']})**")
+                                        
+                                        # Handle the causes data based on its type
+                                        try:
+                                            # Get the causes data
+                                            causes = row['causes']
+                                            if isinstance(causes, str):
+                                                causes = literal_eval(causes)
+                                            
+                                            # Display the JSON
+                                            st.json(causes)
+                                            
+                                            # Add explanations for all category codes
+                                            if isinstance(causes, list):
+                                                for cause in causes:
+                                                    if isinstance(cause, dict):
+                                                        # Display primary category code meaning
+                                                        if 'categoryCode' in cause and category_code_map:
+                                                            code = cause['categoryCode']
+                                                            if code in category_code_map:
+                                                                meaning = category_code_map[code]
+                                                                st.markdown(f"**Category code '{code}'**: {meaning}")
+                                                        
+                                                        # Display detailed category code meaning
+                                                        if 'detailedCategoryCode' in cause and detailed_category_code_map:
+                                                            detailed_code = cause['detailedCategoryCode']
+                                                            if detailed_code in detailed_category_code_map:
+                                                                detailed_meaning = detailed_category_code_map[detailed_code]
+                                                                st.markdown(f"**Detailed category code '{detailed_code}'**: {detailed_meaning}")
+                                                        
+                                                        # Display third category code meaning
+                                                        if 'thirdCategoryCode' in cause and third_category_code_map:
+                                                            third_code = cause['thirdCategoryCode']
+                                                            if third_code in third_category_code_map:
+                                                                third_meaning = third_category_code_map[third_code]
+                                                                st.markdown(f"**Third category code '{third_code}'**: {third_meaning}")
+                                        except Exception as e:
+                                            # If parsing fails, display the raw data
+                                            st.write(row['causes'])
+                                            st.warning(f"Error parsing causes data: {e}")
+                                        
+                                        # Add a separator between entries
+                                        st.markdown("---")
+                                else:
+                                    # Optionally show a message if no delay causes were found
+                                    st.info("ℹ️ No delay causes reported for this train.")
+
                             if not timetable_df.empty:
                                 st.subheader("Select a Train Track ")
                                 unique_stations = timetable_df["stationName"].sort_values().unique()

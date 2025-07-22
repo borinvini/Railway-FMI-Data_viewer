@@ -343,6 +343,186 @@ def create_causes_heatmap(causes_df, mappings):
     plt.tight_layout()
     return fig
 
+def display_all_cause_categories():
+    """Display all delay cause categories and their descriptions in a hierarchical format with weather correlations"""
+    st.subheader("📋 Delay Cause Categories Reference")
+    
+    # Load main categories
+    main_categories_file = os.path.join(VIEWER_FOLDER_NAME, "metadata", "metadata_train_causes.csv")
+    detailed_categories_file = os.path.join(VIEWER_FOLDER_NAME, "metadata", "metadata_train_causes_detailed.csv")
+    
+    main_categories = {}
+    detailed_categories = {}
+    
+    # Load main categories
+    if os.path.exists(main_categories_file):
+        try:
+            df_main = pd.read_csv(main_categories_file)
+            main_categories = dict(zip(df_main['categoryCode'], df_main['categoryName_en']))
+        except Exception as e:
+            st.warning(f"Error loading main categories: {e}")
+    
+    # Load detailed categories
+    if os.path.exists(detailed_categories_file):
+        try:
+            df_detailed = pd.read_csv(detailed_categories_file)
+            detailed_categories = dict(zip(df_detailed['detailedCategoryCode'], df_detailed['detailedCategoryName_en']))
+        except Exception as e:
+            st.warning(f"Error loading detailed categories: {e}")
+    
+    if not main_categories and not detailed_categories:
+        st.warning("⚠️ Could not load category metadata files.")
+        return
+    
+    # Define weather-related delay codes with explanations
+    weather_related_codes = {
+        # Direct Weather-Related Codes
+        'I1': {
+            'type': '🌦️ Direct Weather',
+            'explanation': 'Primary weather delay code covering heavy snow, storms, extreme temperatures, flooding'
+        },
+        'I2': {
+            'type': '🌦️ Direct Weather', 
+            'explanation': 'Seasonal phenomenon - wet leaves (autumn) and icy conditions (winter) reducing traction'
+        },
+        
+        # Infrastructure Weather-Impact Codes
+        'S1': {
+            'type': '⚡ Infrastructure Weather',
+            'explanation': 'Weather causes: ice storms, lightning, strong winds, snow/ice on power lines'
+        },
+        'S2': {
+            'type': '⚡ Infrastructure Weather',
+            'explanation': 'Weather-induced: frozen contact lines, ice preventing electrical contact, storm damage'
+        },
+        'P1': {
+            'type': '⚡ Infrastructure Weather',
+            'explanation': 'Weather-sensitive equipment: signals affected by temperature, switches frozen by ice/snow'
+        },
+        
+        # Track and Speed Restriction Codes
+        'T2': {
+            'type': '🛤️ Track Weather',
+            'explanation': 'Weather-imposed restrictions: high winds, extreme temperatures, ice/snow, flood concerns'
+        },
+        'T3': {
+            'type': '🛤️ Track Weather',
+            'explanation': 'Weather obstacles: fallen trees, snow/ice accumulation, flooding, thermal rail buckling'
+        },
+        
+        # Traction and Performance Codes  
+        'A1': {
+            'type': '🚂 Traction Weather',
+            'explanation': 'Weather factors: icy/snowy rails reducing traction on gradients, wet conditions affecting grip'
+        },
+        'V3': {
+            'type': '🚂 Traction Weather',
+            'explanation': 'Weather traction issues: wet/icy rails causing wheel slip, reduced adhesion in leaf conditions'
+        },
+        
+        # Indirect Weather-Related Codes
+        'O2': {
+            'type': '🐾 Indirect Weather',
+            'explanation': 'Weather connection: animals seeking shelter near tracks during storms, seasonal migration patterns'
+        },
+        'K2': {
+            'type': '🐾 Indirect Weather',
+            'explanation': 'Weather-induced equipment failures: frozen systems (winter), overheated equipment (summer)'
+        }
+    }
+    
+    # Group detailed categories by main category
+    detailed_by_main = {}
+    for detailed_code, detailed_name in detailed_categories.items():
+        if detailed_code and len(detailed_code) > 0:
+            main_code = detailed_code[0]  # First character is the main category
+            if main_code not in detailed_by_main:
+                detailed_by_main[main_code] = []
+            detailed_by_main[main_code].append((detailed_code, detailed_name))
+    
+    # Sort detailed categories within each main category
+    for main_code in detailed_by_main:
+        detailed_by_main[main_code].sort(key=lambda x: x[0])
+    
+    # Display categories in a structured format
+    if main_categories or detailed_categories:
+        # Sort main categories alphabetically
+        sorted_main_categories = sorted(main_categories.items())
+        
+        # Create a single expandable section for all categories
+        with st.expander("🔍 **View All Delay Cause Categories & Descriptions**", expanded=False):
+            # Add weather correlation legend
+            st.markdown("### Weather Correlation Legend")
+            st.markdown("""
+            🌦️ **Direct Weather** - Primary weather-related delays  
+            ⚡ **Infrastructure Weather** - Weather impact on electrical/signaling systems  
+            🛤️ **Track Weather** - Weather affecting tracks and speed restrictions  
+            🚂 **Traction Weather** - Weather reducing train performance and grip  
+            🐾 **Indirect Weather** - Weather indirectly causing delays  
+            """)
+            st.markdown("---")
+            
+            for main_code, main_description in sorted_main_categories:
+                # Check if this main category has weather-related subcategories
+                has_weather_subcategories = False
+                if main_code in detailed_by_main:
+                    has_weather_subcategories = any(detailed_code in weather_related_codes 
+                                                  for detailed_code, _ in detailed_by_main[main_code])
+                
+                # Display main category info with weather indicator if relevant
+                if has_weather_subcategories:
+                    st.markdown(f"🌡️ **Category {main_code}** - {main_description}")
+                else:
+                    st.markdown(f"**Category {main_code}** - {main_description}")
+                
+                # Display detailed subcategories if available
+                if main_code in detailed_by_main:
+                    for detailed_code, detailed_name in detailed_by_main[main_code]:
+                        if detailed_code in weather_related_codes:
+                            weather_info = weather_related_codes[detailed_code]
+                            st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;{weather_info['type']} `{detailed_code}` - {detailed_name}")
+                            st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*{weather_info['explanation']}*")
+                        else:
+                            st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;• `{detailed_code}` - {detailed_name}")
+                else:
+                    st.markdown("&nbsp;&nbsp;&nbsp;&nbsp;*No detailed subcategories available for this category.*")
+                
+                # Add spacing between categories
+                st.markdown("")
+            
+            # Add seasonal patterns information
+            st.markdown("---")
+            st.markdown("### 🗓️ Seasonal Weather Delay Patterns")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**❄️ Winter (Dec-Feb)**")
+                st.markdown("- `I1`, `I2`: Snow, ice, extreme cold")
+                st.markdown("- `S1`, `S2`: Frozen electrical systems")
+                st.markdown("- `A1`, `V3`: Traction issues on icy rails")
+                st.markdown("- `P1`: Frozen switches and signals")
+                
+                st.markdown("**🍂 Autumn (Sep-Nov)**")
+                st.markdown("- `I2`: Classic 'leaf season' delays")
+                st.markdown("- `T3`: Storm-related fallen trees")
+                st.markdown("- `O2`: Animal migration disruptions")
+            
+            with col2:
+                st.markdown("**🌱 Spring (Mar-May)**")
+                st.markdown("- `T3`: Flooding and washouts")
+                st.markdown("- `P1`: Equipment failures from temperature cycling")
+                
+                st.markdown("**☀️ Summer (Jun-Aug)**")
+                st.markdown("- `T2`: Speed restrictions due to rail expansion")
+                st.markdown("- `S1`: Power failures from thunderstorms")
+                st.markdown("- `K2`: Overheating of rolling stock")
+        
+    else:
+        st.info("📝 No category metadata available to display.")
+    
+    st.markdown("---")
+
 # Main page content
 def main():
     st.title("🔍 Railway Delay Causes Analysis")
@@ -350,6 +530,9 @@ def main():
     This page analyzes delay causes across all matched train and weather data files, 
     showing patterns and trends in what causes train delays in the Finnish railway system.
     """)
+    
+    # Display all cause categories and descriptions first
+    display_all_cause_categories()
     
     # Get the date dictionary
     viewer.get_date_range()
