@@ -358,7 +358,7 @@ def create_station_map_plot(df_viz):
             folium.LayerControl().add_to(m)
             
             # Display the map
-            st_folium(m, width=None, height=700, returned_objects=[])
+            st_folium(m, width=None, height=1200, returned_objects=[])
             
             # Add legend and statistics
             st.markdown("### 🎨 Interactive Map Legend")
