@@ -178,112 +178,87 @@ def create_single_visualization(df_stations, plot_key):
     
     if plot_key == "top_stations":
         create_top_stations_plot(df_viz)
-    elif plot_key == "delay_distribution":
-        create_delay_distribution_plots(df_viz)
-    elif plot_key == "percentage_analysis":
-        create_percentage_analysis_plot(df_viz)
     elif plot_key == "station_map":
         create_station_map_plot(df_viz)
 
 def create_top_stations_plot(df_viz):
-    """Create top stations by total delays visualization"""
-    st.subheader("Top 20 Stations by Total Delays")
+    """Create top stations by normalized delay rate visualization"""
+    st.subheader("Top 20 Stations by Delay Rate (Normalized)")
     
-    top_20 = df_viz.head(20)
+    # Sort by delay percentage instead of total delays
+    top_20 = df_viz.nlargest(20, 'delay_percentage')
     
     fig, ax = plt.subplots(figsize=(12, 8))
-    bars = ax.barh(range(len(top_20)), top_20['total_of_delays'])
+    bars = ax.barh(range(len(top_20)), top_20['delay_percentage'])
     ax.set_yticks(range(len(top_20)))
     ax.set_yticklabels([f"{row['stationName']} ({row['stationShortCode']})" 
                        if row['stationName'] else row['stationShortCode']
                        for _, row in top_20.iterrows()])
-    ax.set_xlabel('Total Number of Delays (≥5 minutes)')
-    ax.set_title('Top 20 Stations by Total Delays')
+    ax.set_xlabel('Delay Rate (% of trains delayed ≥5 minutes)')
+    ax.set_title('Top 20 Stations by Delay Rate (Normalized)')
     
-    # Color bars based on delay count
+    # Color bars based on delay percentage
     colors = plt.cm.RdYlGn_r(np.linspace(0.3, 0.9, len(top_20)))
     for bar, color in zip(bars, colors):
         bar.set_color(color)
     
-    # Add value labels
+    # Add value labels showing percentage and context
     for i, (_, row) in enumerate(top_20.iterrows()):
-        ax.text(row['total_of_delays'] + 10, i, f"{row['total_of_delays']:,}", 
-               va='center', fontweight='bold')
+        # Show percentage with context about total trains
+        label = f"{row['delay_percentage']:.1f}%"
+        if row['total_of_trains'] >= 100:  # Show train count for stations with significant traffic
+            label += f"\n({row['total_of_delays']:,}/{row['total_of_trains']:,})"
+        ax.text(row['delay_percentage'] + 0.5, i, label, 
+               va='center', fontweight='bold', fontsize=9)
     
-    plt.tight_layout()
-    st.pyplot(fig)
-
-def create_delay_distribution_plots(df_viz):
-    """Create delay distribution analysis plots"""
-    st.subheader("Delay Distribution Analysis")
-    
-    # Create histogram of delays
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
-    
-    # Histogram of total delays
-    ax1.hist(df_viz['total_of_delays'], bins=30, color='coral', edgecolor='black', alpha=0.7)
-    ax1.set_xlabel('Total Delays per Station')
-    ax1.set_ylabel('Number of Stations')
-    ax1.set_title('Distribution of Total Delays')
-    ax1.grid(True, alpha=0.3)
-    
-    # Histogram of delay percentage
-    ax2.hist(df_viz['delay_percentage'], bins=30, color='skyblue', edgecolor='black', alpha=0.7)
-    ax2.set_xlabel('Delay Percentage (%)')
-    ax2.set_ylabel('Number of Stations')
-    ax2.set_title('Distribution of Delay Percentages')
-    ax2.grid(True, alpha=0.3)
+    # Add a note about data interpretation
+    ax.text(0.02, 0.98, 
+           f"Note: Shows delay rate as percentage of total trains\nBased on {len(df_viz)} stations with train traffic", 
+           transform=ax.transAxes, 
+           verticalalignment='top',
+           bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7),
+           fontsize=10)
     
     plt.tight_layout()
     st.pyplot(fig)
     
-    # Show distribution statistics
-    col1, col2, col3, col4 = st.columns(4)
+    # Add summary statistics below the chart
+    st.markdown("### 📊 Key Insights")
+    
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Mean Delays per Station", f"{df_viz['total_of_delays'].mean():.1f}")
+        highest_rate_station = top_20.iloc[0]
+        st.metric(
+            label="🔴 Highest Delay Rate", 
+            value=f"{highest_rate_station['stationName']} ({highest_rate_station['stationShortCode']})",
+            delta=f"{highest_rate_station['delay_percentage']:.1f}%"
+        )
+    
     with col2:
-        st.metric("Median Delays per Station", f"{df_viz['total_of_delays'].median():.0f}")
+        # Find stations with significant traffic (>= 1000 trains) and highest delay rate
+        significant_traffic = top_20[top_20['total_of_trains'] >= 1000]
+        if not significant_traffic.empty:
+            high_traffic_station = significant_traffic.iloc[0]
+            st.metric(
+                label="🚂 High Traffic + High Delays",
+                value=f"{high_traffic_station['stationName']} ({high_traffic_station['stationShortCode']})",
+                delta=f"{high_traffic_station['delay_percentage']:.1f}% ({high_traffic_station['total_of_trains']:,} trains)"
+            )
+        else:
+            st.metric(
+                label="🚂 High Traffic Threshold",
+                value="No stations found",
+                delta="with ≥1000 trains"
+            )
+    
     with col3:
-        st.metric("Mean Delay %", f"{df_viz['delay_percentage'].mean():.1f}%")
-    with col4:
-        st.metric("Median Delay %", f"{df_viz['delay_percentage'].median():.1f}%")
-
-def create_percentage_analysis_plot(df_viz):
-    """Create percentage analysis plot"""
-    st.subheader("Stations with Highest Delay Percentages")
-    
-    # Filter stations with significant traffic (at least 100 trains)
-    df_significant = df_viz[df_viz['total_of_trains'] >= 100].copy()
-    
-    if not df_significant.empty:
-        top_20_pct = df_significant.nlargest(20, 'delay_percentage')
-        
-        fig, ax = plt.subplots(figsize=(12, 8))
-        
-        bars = ax.barh(range(len(top_20_pct)), top_20_pct['delay_percentage'])
-        ax.set_yticks(range(len(top_20_pct)))
-        ax.set_yticklabels([f"{row['stationName']} ({row['stationShortCode']})" 
-                           if row['stationName'] else row['stationShortCode']
-                           for _, row in top_20_pct.iterrows()])
-        ax.set_xlabel('Delay Percentage (%)')
-        ax.set_title('Top 20 Stations by Delay Percentage (min. 100 trains)')
-        
-        # Color bars
-        colors = plt.cm.RdYlGn_r(np.linspace(0.3, 0.9, len(top_20_pct)))
-        for bar, color in zip(bars, colors):
-            bar.set_color(color)
-        
-        # Add value labels
-        for i, (_, row) in enumerate(top_20_pct.iterrows()):
-            ax.text(row['delay_percentage'] + 0.2, i, 
-                   f"{row['delay_percentage']:.1f}%", 
-                   va='center', fontweight='bold')
-        
-        plt.tight_layout()
-        st.pyplot(fig)
-    else:
-        st.info("No stations with at least 100 trains found.")
+        average_rate = top_20['delay_percentage'].mean()
+        st.metric(
+            label="📈 Average Rate (Top 20)",
+            value=f"{average_rate:.1f}%",
+            delta=f"Range: {top_20['delay_percentage'].min():.1f}% - {top_20['delay_percentage'].max():.1f}%"
+        )
 
 def create_station_map_plot(df_viz):
     """Create station map plot"""
@@ -509,9 +484,7 @@ def main():
         # Define plot options
         plot_options = {
             "📊 Top Stations by Delays": "top_stations",
-            "📈 Delay Distribution": "delay_distribution", 
             "📋 Data Table Only": "data_only",
-            "🎯 Percentage Analysis": "percentage_analysis",
             "🗺️ Station Map": "station_map"
         }
         
