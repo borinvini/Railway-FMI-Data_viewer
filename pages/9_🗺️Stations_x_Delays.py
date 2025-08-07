@@ -8,7 +8,7 @@ import seaborn as sns
 import numpy as np
 import folium
 from streamlit_folium import st_folium
-from config.const import DELAY_OFFSET, DELAY_OFFSET_MINUTES, FMI_BBOX
+from config.const import FMI_BBOX
 
 # Page configuration
 st.set_page_config(
@@ -104,8 +104,8 @@ def process_matched_data_files(df_stations):
                                         visited_stations.add(station_code)
                                     
                                     # Check for delays (>= 5 minutes)
-                                    delay_offset = station_entry.get(DELAY_OFFSET)
-                                    if delay_offset is not None and delay_offset >= DELAY_OFFSET_MINUTES:
+                                    delay_offset = station_entry.get('differenceInMinutes_eachStation_offset')
+                                    if delay_offset is not None and delay_offset >= 5:
                                         station_stats[station_code]['delays'] += 1
                         
                         processed_trains += 1
@@ -293,13 +293,19 @@ def create_station_map_plot(df_viz):
             high_delay_group = folium.FeatureGroup(name="High Delay Stations (≥15%)", show=True)
             medium_delay_group = folium.FeatureGroup(name="Medium Delay Stations (5-15%)", show=True)
             low_delay_group = folium.FeatureGroup(name="Low Delay Stations (<5%)", show=True)
+            low_traffic_group = folium.FeatureGroup(name="Low Traffic Stations (<100 trains)", show=True)
             
             # Add markers for each station
             for _, row in df_map.iterrows():
-                # Determine marker color and group based on delay percentage
+                # Determine marker color and group based on train traffic first, then delay percentage
                 delay_pct = row['delay_percentage']
+                total_trains = row['total_of_trains']
                 
-                if delay_pct >= 15:
+                if total_trains < 100:
+                    color = 'blue'
+                    group = low_traffic_group
+                    priority = "🔵 Low Traffic"
+                elif delay_pct >= 15:
                     color = 'red'
                     group = high_delay_group
                     priority = "🔴 High Priority"
@@ -318,18 +324,21 @@ def create_station_map_plot(df_viz):
                     <h3>🚂 {row['stationName']}</h3>
                     <hr>
                     <b>Station Code:</b> {row['stationShortCode']}<br>
-                    <b>Delay Priority:</b> {priority}<br>
+                    <b>Category:</b> {priority}<br>
                     <b>Delay Rate:</b> {delay_pct:.1f}%<br>
                     <b>Total Delays:</b> {row['total_of_delays']:,}<br>
                     <b>Total Trains:</b> {row['total_of_trains']:,}<br>
                     <b>Location:</b> {row['latitude']:.4f}, {row['longitude']:.4f}<br>
                     <hr>
-                    <small>Delays ≥5 minutes are counted</small>
+                    <small>{'Low traffic station - delay rate may not be statistically significant' if total_trains < 100 else 'Delays ≥5 minutes are counted'}</small>
                 </div>
                 """
                 
                 # Create tooltip
-                tooltip_text = f"{row['stationName']} ({row['stationShortCode']}) - {delay_pct:.1f}% delays"
+                if total_trains < 100:
+                    tooltip_text = f"{row['stationName']} ({row['stationShortCode']}) - Low traffic ({total_trains} trains)"
+                else:
+                    tooltip_text = f"{row['stationName']} ({row['stationShortCode']}) - {delay_pct:.1f}% delays"
                 
                 # Add marker to appropriate group
                 folium.Marker(
@@ -343,6 +352,7 @@ def create_station_map_plot(df_viz):
             high_delay_group.add_to(m)
             medium_delay_group.add_to(m)
             low_delay_group.add_to(m)
+            low_traffic_group.add_to(m)
             
             # Add layer control
             folium.LayerControl().add_to(m)
@@ -360,17 +370,21 @@ def create_station_map_plot(df_viz):
                 st.markdown("🔴 **High Priority**: ≥ 15% delay rate")
                 st.markdown("🟠 **Medium Priority**: 5-15% delay rate") 
                 st.markdown("🟢 **Low Priority**: < 5% delay rate")
+                st.markdown("🔵 **Low Traffic**: < 100 trains (any delay rate)")
             
             with col2:
                 # Calculate category statistics
-                high_delay_count = (df_map['delay_percentage'] >= 15).sum()
-                medium_delay_count = ((df_map['delay_percentage'] >= 5) & (df_map['delay_percentage'] < 15)).sum()
-                low_delay_count = (df_map['delay_percentage'] < 5).sum()
+                low_traffic_count = (df_map['total_of_trains'] < 100).sum()
+                high_traffic = df_map[df_map['total_of_trains'] >= 100]
+                high_delay_count = (high_traffic['delay_percentage'] >= 15).sum()
+                medium_delay_count = ((high_traffic['delay_percentage'] >= 5) & (high_traffic['delay_percentage'] < 15)).sum()
+                low_delay_count = (high_traffic['delay_percentage'] < 5).sum()
                 
                 st.markdown("**Station Count by Category:**")
                 st.markdown(f"🔴 High Priority: {high_delay_count} stations")
                 st.markdown(f"🟠 Medium Priority: {medium_delay_count} stations")
                 st.markdown(f"🟢 Low Priority: {low_delay_count} stations")
+                st.markdown(f"🔵 Low Traffic: {low_traffic_count} stations")
             
             # Additional insights
             st.markdown("### 🔍 Map Insights")
@@ -401,7 +415,7 @@ def create_station_map_plot(df_viz):
                     delta=f"{busiest_station['total_of_trains']:,} trains"
                 )
             
-            st.info(f"🗺️ Interactive map showing {len(df_map)} stations across Finland. Click markers for detailed information, use layer control to filter by delay priority.")
+            st.info(f"🗺️ Interactive map showing {len(df_map)} stations across Finland. Click markers for detailed information, use layer control to filter by category. **Note**: Low traffic stations (<100 trains) are marked in blue regardless of delay rate.")
             
         else:
             st.warning("No stations with valid coordinates found.")
