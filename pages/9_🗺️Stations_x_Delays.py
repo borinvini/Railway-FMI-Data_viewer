@@ -8,7 +8,7 @@ import seaborn as sns
 import numpy as np
 import folium
 from streamlit_folium import st_folium
-from config.const import FMI_BBOX
+from config.const import DELAY_OFFSET, DELAY_OFFSET_MINUTES, FMI_BBOX
 
 # Page configuration
 st.set_page_config(
@@ -104,8 +104,8 @@ def process_matched_data_files(df_stations):
                                         visited_stations.add(station_code)
                                     
                                     # Check for delays (>= 5 minutes)
-                                    delay_offset = station_entry.get('differenceInMinutes_eachStation_offset')
-                                    if delay_offset is not None and delay_offset >= 5:
+                                    delay_offset = station_entry.get(DELAY_OFFSET)
+                                    if delay_offset is not None and delay_offset >= DELAY_OFFSET_MINUTES:
                                         station_stats[station_code]['delays'] += 1
                         
                         processed_trains += 1
