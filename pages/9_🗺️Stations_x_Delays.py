@@ -6,6 +6,9 @@ from ast import literal_eval
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import folium
+from streamlit_folium import st_folium
+from config.const import FMI_BBOX
 
 # Page configuration
 st.set_page_config(
@@ -261,55 +264,145 @@ def create_top_stations_plot(df_viz):
         )
 
 def create_station_map_plot(df_viz):
-    """Create station map plot"""
+    """Create interactive station map using streamlit_folium"""
     st.subheader("Station Delay Map")
     
     # Check if we have coordinate data
     if 'latitude' in df_viz.columns and 'longitude' in df_viz.columns:
-        # Create scatter plot on map-like visualization
-        fig, ax = plt.subplots(figsize=(12, 10))
-        
         # Filter out stations without coordinates
         df_map = df_viz.dropna(subset=['latitude', 'longitude'])
         
         if not df_map.empty:
-            # Create scatter plot with size based on total trains and color based on delay percentage
-            scatter = ax.scatter(
-                df_map['longitude'], 
-                df_map['latitude'],
-                s=df_map['total_of_trains'] / 10,  # Size based on traffic
-                c=df_map['delay_percentage'],       # Color based on delay %
-                cmap='RdYlGn_r',
-                alpha=0.6,
-                edgecolors='black',
-                linewidth=0.5
+            # Parse Finland bounding box from const.py
+            # FMI_BBOX = "18,55,35,75" -> [west, south, east, north]
+            bbox_parts = [float(x) for x in FMI_BBOX.split(',')]
+            west, south, east, north = bbox_parts
+            
+            # Calculate center of Finland
+            center_lat = (south + north) / 2
+            center_lon = (west + east) / 2
+            
+            # Create folium map
+            m = folium.Map(
+                location=[center_lat, center_lon],
+                zoom_start=5,
+                tiles="OpenStreetMap"
             )
             
-            # Add colorbar
-            cbar = plt.colorbar(scatter, ax=ax)
-            cbar.set_label('Delay Percentage (%)', rotation=270, labelpad=20)
+            # Create different feature groups for better organization
+            high_delay_group = folium.FeatureGroup(name="High Delay Stations (≥15%)", show=True)
+            medium_delay_group = folium.FeatureGroup(name="Medium Delay Stations (5-15%)", show=True)
+            low_delay_group = folium.FeatureGroup(name="Low Delay Stations (<5%)", show=True)
             
-            # Add labels for top delay stations
-            top_delay_stations = df_map.nlargest(10, 'total_of_delays')
-            for _, row in top_delay_stations.iterrows():
-                ax.annotate(
-                    row['stationShortCode'],
-                    xy=(row['longitude'], row['latitude']),
-                    xytext=(5, 5),
-                    textcoords='offset points',
-                    fontsize=8,
-                    fontweight='bold'
+            # Add markers for each station
+            for _, row in df_map.iterrows():
+                # Determine marker color and group based on delay percentage
+                delay_pct = row['delay_percentage']
+                
+                if delay_pct >= 15:
+                    color = 'red'
+                    group = high_delay_group
+                    priority = "🔴 High Priority"
+                elif delay_pct >= 5:
+                    color = 'orange'
+                    group = medium_delay_group
+                    priority = "🟠 Medium Priority"
+                else:
+                    color = 'green'
+                    group = low_delay_group
+                    priority = "🟢 Low Priority"
+                
+                # Create popup text with comprehensive information
+                popup_text = f"""
+                <div style="min-width: 250px">
+                    <h3>🚂 {row['stationName']}</h3>
+                    <hr>
+                    <b>Station Code:</b> {row['stationShortCode']}<br>
+                    <b>Delay Priority:</b> {priority}<br>
+                    <b>Delay Rate:</b> {delay_pct:.1f}%<br>
+                    <b>Total Delays:</b> {row['total_of_delays']:,}<br>
+                    <b>Total Trains:</b> {row['total_of_trains']:,}<br>
+                    <b>Location:</b> {row['latitude']:.4f}, {row['longitude']:.4f}<br>
+                    <hr>
+                    <small>Delays ≥5 minutes are counted</small>
+                </div>
+                """
+                
+                # Create tooltip
+                tooltip_text = f"{row['stationName']} ({row['stationShortCode']}) - {delay_pct:.1f}% delays"
+                
+                # Add marker to appropriate group
+                folium.Marker(
+                    location=[row['latitude'], row['longitude']],
+                    popup=folium.Popup(popup_text, max_width=350),
+                    tooltip=tooltip_text,
+                    icon=folium.Icon(color=color, icon="train", prefix="fa")
+                ).add_to(group)
+            
+            # Add all feature groups to map
+            high_delay_group.add_to(m)
+            medium_delay_group.add_to(m)
+            low_delay_group.add_to(m)
+            
+            # Add layer control
+            folium.LayerControl().add_to(m)
+            
+            # Display the map
+            st_folium(m, width=None, height=700, returned_objects=[])
+            
+            # Add legend and statistics
+            st.markdown("### 🎨 Interactive Map Legend")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**Delay Rate Categories:**")
+                st.markdown("🔴 **High Priority**: ≥ 15% delay rate")
+                st.markdown("🟠 **Medium Priority**: 5-15% delay rate") 
+                st.markdown("🟢 **Low Priority**: < 5% delay rate")
+            
+            with col2:
+                # Calculate category statistics
+                high_delay_count = (df_map['delay_percentage'] >= 15).sum()
+                medium_delay_count = ((df_map['delay_percentage'] >= 5) & (df_map['delay_percentage'] < 15)).sum()
+                low_delay_count = (df_map['delay_percentage'] < 5).sum()
+                
+                st.markdown("**Station Count by Category:**")
+                st.markdown(f"🔴 High Priority: {high_delay_count} stations")
+                st.markdown(f"🟠 Medium Priority: {medium_delay_count} stations")
+                st.markdown(f"🟢 Low Priority: {low_delay_count} stations")
+            
+            # Additional insights
+            st.markdown("### 🔍 Map Insights")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                worst_station = df_map.loc[df_map['delay_percentage'].idxmax()]
+                st.metric(
+                    label="🔴 Worst Delay Rate",
+                    value=f"{worst_station['stationName']}",
+                    delta=f"{worst_station['delay_percentage']:.1f}%"
                 )
             
-            ax.set_xlabel('Longitude')
-            ax.set_ylabel('Latitude')
-            ax.set_title('Station Delays Across Finland\n(Size = Traffic Volume, Color = Delay %)')
-            ax.grid(True, alpha=0.3)
+            with col2:
+                most_delays_station = df_map.loc[df_map['total_of_delays'].idxmax()]
+                st.metric(
+                    label="📊 Most Total Delays",
+                    value=f"{most_delays_station['stationName']}",
+                    delta=f"{most_delays_station['total_of_delays']:,} delays"
+                )
             
-            plt.tight_layout()
-            st.pyplot(fig)
+            with col3:
+                busiest_station = df_map.loc[df_map['total_of_trains'].idxmax()]
+                st.metric(
+                    label="🚂 Busiest Station",
+                    value=f"{busiest_station['stationName']}",
+                    delta=f"{busiest_station['total_of_trains']:,} trains"
+                )
             
-            st.info("💡 Bubble size represents total train traffic, color represents delay percentage")
+            st.info(f"🗺️ Interactive map showing {len(df_map)} stations across Finland. Click markers for detailed information, use layer control to filter by delay priority.")
+            
         else:
             st.warning("No stations with valid coordinates found.")
     else:
@@ -485,13 +578,13 @@ def main():
         plot_options = {
             "📊 Top Stations by Delays": "top_stations",
             "📋 Data Table Only": "data_only",
-            "🗺️ Station Map": "station_map"
+            "🗺️ Interactive Station Map": "station_map"
         }
         
         selected_plot = st.sidebar.radio(
             "Choose visualization:",
             options=list(plot_options.keys()),
-            index=0
+            index=2  # Default to the new interactive map
         )
         
         # Get the plot key
