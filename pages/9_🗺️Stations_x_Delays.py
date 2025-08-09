@@ -46,9 +46,135 @@ def load_station_metadata():
     except Exception as e:
         st.error(f"❌ Error loading station metadata: {e}")
         return None
+    
+def extract_and_save_routes(matched_data_path):
+    """Extract all unique train routes from matched data files and save to routes.csv"""
+    
+    if not os.path.exists(matched_data_path):
+        st.error(f"⚠️ Matched data directory not found at: {matched_data_path}")
+        return False
+    
+    # Get all CSV files in the matched_data directory
+    pattern = os.path.join(matched_data_path, "*.csv")
+    matched_files = glob.glob(pattern)
+    
+    if not matched_files:
+        st.warning("⚠️ No matched data files found in the directory.")
+        return False
+    
+    # Set to store unique routes (using tuple for hashability)
+    unique_routes = set()
+    
+    # Create a progress bar for route extraction
+    route_progress_bar = st.progress(0)
+    route_status_text = st.empty()
+    
+    total_files = len(matched_files)
+    processed_routes = 0
+    
+    for file_idx, file_path in enumerate(matched_files):
+        file_name = os.path.basename(file_path)
+        route_status_text.text(f"Extracting routes from file {file_idx + 1}/{total_files}: {file_name}")
+        
+        try:
+            # Load the matched data file
+            df_matched = pd.read_csv(file_path)
+            
+            # Process each train (row) in the file
+            for idx, row in df_matched.iterrows():
+                if 'timeTableRows' in row and pd.notna(row['timeTableRows']):
+                    try:
+                        # Parse the timeTableRows
+                        timetable_str = str(row['timeTableRows']).replace('nan', 'None')
+                        timetable_data = literal_eval(timetable_str)
+                        
+                        # Extract station sequence for this train
+                        stations_with_time = []
+                        
+                        for station_entry in timetable_data:
+                            if isinstance(station_entry, dict):
+                                station_code = station_entry.get('stationShortCode')
+                                station_name = station_entry.get('stationName')
+                                scheduled_time = station_entry.get('scheduledTime')
+                                
+                                if station_code and station_name and scheduled_time:
+                                    stations_with_time.append({
+                                        'stationName': station_name,
+                                        'scheduledTime': scheduled_time
+                                    })
+                        
+                        # Sort by scheduled time to get correct route order
+                        if stations_with_time:
+                            try:
+                                # Sort by scheduled time
+                                stations_with_time.sort(key=lambda x: pd.to_datetime(x['scheduledTime']))
+                            except:
+                                # If parsing fails, keep original order
+                                pass
+                            
+                            # Extract the route as a sequence of station names
+                            # Remove duplicates while preserving order
+                            route_stations = []
+                            seen = set()
+                            for station in stations_with_time:
+                                station_name = station['stationName']
+                                if station_name not in seen:
+                                    route_stations.append(station_name)
+                                    seen.add(station_name)
+                            
+                            # Only add routes with at least 2 stations
+                            if len(route_stations) >= 2:
+                                route_tuple = tuple(route_stations)
+                                unique_routes.add(route_tuple)
+                                processed_routes += 1
+                        
+                    except Exception as e:
+                        # Skip trains with parsing errors
+                        continue
+                        
+        except Exception as e:
+            st.warning(f"⚠️ Error processing file {file_name} for routes: {e}")
+            continue
+        
+        # Update progress
+        route_progress_bar.progress((file_idx + 1) / total_files)
+    
+    # Clear progress indicators
+    route_progress_bar.empty()
+    route_status_text.empty()
+    
+    # Convert routes to DataFrame and save
+    if unique_routes:
+        # Convert set of tuples to list of lists for CSV saving
+        routes_list = [list(route) for route in unique_routes]
+        
+        # Create DataFrame with route as a string representation of list
+        df_routes = pd.DataFrame({
+            'route': [str(route) for route in routes_list]
+        })
+        
+        # Create directory if it doesn't exist
+        output_dir = "data/metadata"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Save routes to CSV
+        routes_file = os.path.join(output_dir, "routes.csv")
+        
+        try:
+            df_routes.to_csv(routes_file, index=False)
+            st.success(f"✅ Extracted and saved {len(unique_routes):,} unique routes to: `{routes_file}`")
+            st.info(f"📈 Processed {processed_routes:,} individual train journeys to find unique routes")
+            return True
+            
+        except Exception as e:
+            st.error(f"❌ Error saving routes: {e}")
+            return False
+    else:
+        st.warning("⚠️ No valid routes found in the dataset.")
+        return False
 
 def process_matched_data_files(df_stations):
-    """Process all matched data files and count delays and trains per station"""
+    """Process all matched data files and count delays/trains per station AND extract routes in a single pass"""
     matched_data_path = "data/viewers/matched_data"
     
     if not os.path.exists(matched_data_path):
@@ -70,12 +196,16 @@ def process_matched_data_files(df_stations):
     total_files = len(matched_files)
     processed_trains = 0
     
-    # Create a dictionary for faster lookups
+    # Create a dictionary for faster lookups (station delays/trains)
     station_stats = {code: {'delays': 0, 'trains': 0} for code in df_stations['stationShortCode']}
+    
+    # Set to store unique routes (using tuple for hashability)
+    unique_routes = set()
+    processed_routes = 0
     
     for file_idx, file_path in enumerate(matched_files):
         file_name = os.path.basename(file_path)
-        status_text.text(f"Processing file {file_idx + 1}/{total_files}: {file_name}")
+        status_text.text(f"Processing file {file_idx + 1}/{total_files}: {file_name} (delays + routes)")
         
         try:
             # Load the matched data file
@@ -89,14 +219,20 @@ def process_matched_data_files(df_stations):
                         timetable_str = str(row['timeTableRows']).replace('nan', 'None')
                         timetable_data = literal_eval(timetable_str)
                         
-                        # Track which stations this train visited (to avoid double counting)
+                        # Track which stations this train visited (to avoid double counting delays)
                         visited_stations = set()
                         
-                        # Process each station in the timetable
+                        # Extract station sequence for route (with scheduled times)
+                        stations_with_time = []
+                        
+                        # Process each station in the timetable (for both delays and routes)
                         for station_entry in timetable_data:
                             if isinstance(station_entry, dict):
                                 station_code = station_entry.get('stationShortCode')
+                                station_name = station_entry.get('stationName')
+                                scheduled_time = station_entry.get('scheduledTime')
                                 
+                                # === DELAY COUNTING LOGIC ===
                                 if station_code and station_code in station_stats:
                                     # Count this station only once per train
                                     if station_code not in visited_stations:
@@ -107,6 +243,38 @@ def process_matched_data_files(df_stations):
                                     delay_offset = station_entry.get('differenceInMinutes_eachStation_offset')
                                     if delay_offset is not None and delay_offset >= 5:
                                         station_stats[station_code]['delays'] += 1
+                                
+                                # === ROUTE EXTRACTION LOGIC ===
+                                if station_code and station_name and scheduled_time:
+                                    stations_with_time.append({
+                                        'stationName': station_name,
+                                        'scheduledTime': scheduled_time
+                                    })
+                        
+                        # === PROCESS ROUTE FOR THIS TRAIN ===
+                        if stations_with_time:
+                            try:
+                                # Sort by scheduled time to get correct route order
+                                stations_with_time.sort(key=lambda x: pd.to_datetime(x['scheduledTime']))
+                            except:
+                                # If parsing fails, keep original order
+                                pass
+                            
+                            # Extract the route as a sequence of station names
+                            # Remove duplicates while preserving order
+                            route_stations = []
+                            seen = set()
+                            for station in stations_with_time:
+                                station_name = station['stationName']
+                                if station_name not in seen:
+                                    route_stations.append(station_name)
+                                    seen.add(station_name)
+                            
+                            # Only add routes with at least 2 stations
+                            if len(route_stations) >= 2:
+                                route_tuple = tuple(route_stations)
+                                unique_routes.add(route_tuple)
+                                processed_routes += 1
                         
                         processed_trains += 1
                         
@@ -121,7 +289,7 @@ def process_matched_data_files(df_stations):
         # Update progress
         progress_bar.progress((file_idx + 1) / total_files)
     
-    # Update the dataframe with the collected statistics
+    # Update the dataframe with the collected station statistics
     for station_code, stats in station_stats.items():
         mask = df_stations['stationShortCode'] == station_code
         df_stations.loc[mask, 'total_of_delays'] = stats['delays']
@@ -131,8 +299,35 @@ def process_matched_data_files(df_stations):
     progress_bar.empty()
     status_text.empty()
     
-    # Show completion message
+    # Show completion message for station processing
     st.success(f"✅ Processed {total_files} files containing {processed_trains:,} train journeys")
+    
+    # === SAVE ROUTES ===
+    if unique_routes:
+        # Convert set of tuples to list of lists for CSV saving
+        routes_list = [list(route) for route in unique_routes]
+        
+        # Create DataFrame with route as a string representation of list
+        df_routes = pd.DataFrame({
+            'route': [str(route) for route in routes_list]
+        })
+        
+        # Create directory if it doesn't exist
+        output_dir = "data/metadata"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Save routes to CSV
+        routes_file = os.path.join(output_dir, "routes.csv")
+        
+        try:
+            df_routes.to_csv(routes_file, index=False)
+            st.success(f"✅ Extracted and saved {len(unique_routes):,} unique routes to: `{routes_file}`")
+            st.info(f"📈 Processed {processed_routes:,} individual train journeys to find unique routes")
+            
+        except Exception as e:
+            st.error(f"❌ Error saving routes: {e}")
+    else:
+        st.warning("⚠️ No valid routes found in the dataset.")
     
     return df_stations
 
