@@ -8,7 +8,7 @@ import seaborn as sns
 import numpy as np
 import folium
 from streamlit_folium import st_folium
-from config.const import FMI_BBOX
+from config.const import FMI_BBOX, VIEWER_FOLDER_NAME
 
 # Page configuration
 st.set_page_config(
@@ -154,11 +154,11 @@ def extract_and_save_routes(matched_data_path):
         })
         
         # Create directory if it doesn't exist
-        output_dir = "data/metadata"
+        output_dir = os.path.join(VIEWER_FOLDER_NAME, "metadata")  # This resolves to "data/viewers/metadata"
         os.makedirs(output_dir, exist_ok=True)
         
-        # Save routes to CSV
-        routes_file = os.path.join(output_dir, "routes.csv")
+        # Save routes to CSV - USE CORRECT FILENAME
+        routes_file = os.path.join(output_dir, "metadata_routes.csv")
         
         try:
             df_routes.to_csv(routes_file, index=False)
@@ -168,6 +168,7 @@ def extract_and_save_routes(matched_data_path):
             
         except Exception as e:
             st.error(f"❌ Error saving routes: {e}")
+            st.error(f"🔍 Debug: Attempted to save to: `{routes_file}`")
             return False
     else:
         st.warning("⚠️ No valid routes found in the dataset.")
@@ -312,20 +313,27 @@ def process_matched_data_files(df_stations):
             'route': [str(route) for route in routes_list]
         })
         
-        # Create directory if it doesn't exist
-        output_dir = "data/metadata"
+        # Use the correct directory path (VIEWER_FOLDER_NAME/metadata)
+        output_dir = os.path.join(VIEWER_FOLDER_NAME, "metadata")  # This resolves to "data/viewers/metadata"
         os.makedirs(output_dir, exist_ok=True)
         
-        # Save routes to CSV
-        routes_file = os.path.join(output_dir, "routes.csv")
+        # Use the correct filename with metadata_ prefix
+        routes_file = os.path.join(output_dir, "metadata_routes.csv")
         
         try:
             df_routes.to_csv(routes_file, index=False)
             st.success(f"✅ Extracted and saved {len(unique_routes):,} unique routes to: `{routes_file}`")
             st.info(f"📈 Processed {processed_routes:,} individual train journeys to find unique routes")
             
+            # Debug info to help troubleshoot
+            st.info(f"🔍 Debug: Directory `{output_dir}` exists: {os.path.exists(output_dir)}")
+            st.info(f"🔍 Debug: File saved at: `{os.path.abspath(routes_file)}`")
+            
         except Exception as e:
             st.error(f"❌ Error saving routes: {e}")
+            st.error(f"🔍 Debug: Attempted to save to: `{routes_file}`")
+            st.error(f"🔍 Debug: Output directory: `{output_dir}`")
+            
     else:
         st.warning("⚠️ No valid routes found in the dataset.")
     
