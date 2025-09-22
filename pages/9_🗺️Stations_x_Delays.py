@@ -17,6 +17,475 @@ st.set_page_config(
     layout="wide"
 )
 
+def load_routes_data():
+    """Load routes data from metadata_routes.csv if it exists"""
+    routes_file = os.path.join(VIEWER_FOLDER_NAME, "metadata", "metadata_routes.csv")
+    
+    if not os.path.exists(routes_file):
+        return None
+    
+    try:
+        df_routes = pd.read_csv(routes_file)
+        return df_routes
+    except Exception as e:
+        st.error(f"❌ Error loading routes file: {e}")
+        return None
+
+def parse_route_string(route_string):
+    """Parse a route string back into a list of station names"""
+    try:
+        # Remove quotes and convert string representation of list back to actual list
+        route_list = literal_eval(route_string.strip())
+        return route_list if isinstance(route_list, list) else []
+    except Exception as e:
+        st.warning(f"⚠️ Error parsing route: {e}")
+        return []
+
+def get_station_coordinates_for_route(station_names):
+    """Get coordinates and delay statistics for stations in a route"""
+    metadata_path = os.path.join(VIEWER_FOLDER_NAME, "metadata", "metadata_train_stations.csv")
+    delay_stats_path = "data/viewers/delay_maps/stations_x_delays.csv"
+    
+    if not os.path.exists(metadata_path):
+        return pd.DataFrame()
+    
+    try:
+        df_stations = pd.read_csv(metadata_path)
+        
+        # Load delay statistics if available
+        df_delays = None
+        if os.path.exists(delay_stats_path):
+            df_delays = pd.read_csv(delay_stats_path)
+            # Calculate delay percentage
+            df_delays['delay_percentage'] = 0.0
+            mask = df_delays['total_of_trains'] > 0
+            df_delays.loc[mask, 'delay_percentage'] = (
+                df_delays.loc[mask, 'total_of_delays'] / df_delays.loc[mask, 'total_of_trains'] * 100
+            )
+        
+        # Filter for stations in the route and preserve order
+        route_coords = []
+        for station_name in station_names:
+            station_match = df_stations[df_stations['stationName'] == station_name]
+            if not station_match.empty:
+                station_data = station_match.iloc[0]
+                if pd.notna(station_data['latitude']) and pd.notna(station_data['longitude']):
+                    route_station = {
+                        'stationName': station_name,
+                        'stationShortCode': station_data.get('stationShortCode', ''),
+                        'latitude': station_data['latitude'],
+                        'longitude': station_data['longitude'],
+                        'route_order': len(route_coords),  # Preserve order in route
+                        'total_of_delays': 0,
+                        'total_of_trains': 0,
+                        'delay_percentage': 0.0
+                    }
+                    
+                    # Add delay statistics if available
+                    if df_delays is not None:
+                        delay_match = df_delays[df_delays['stationShortCode'] == station_data.get('stationShortCode', '')]
+                        if not delay_match.empty:
+                            delay_data = delay_match.iloc[0]
+                            route_station.update({
+                                'total_of_delays': delay_data.get('total_of_delays', 0),
+                                'total_of_trains': delay_data.get('total_of_trains', 0),
+                                'delay_percentage': delay_data.get('delay_percentage', 0.0)
+                            })
+                    
+                    route_coords.append(route_station)
+        
+        return pd.DataFrame(route_coords)
+        
+    except Exception as e:
+        st.error(f"❌ Error loading station coordinates: {e}")
+        return pd.DataFrame()
+
+def create_route_map(route_coords, route_name):
+    """Create an interactive map showing the selected train route with delay rate classification"""
+    if route_coords.empty:
+        st.warning("⚠️ No coordinates found for stations in this route.")
+        return None
+    
+    # Calculate map center
+    center_lat = route_coords['latitude'].mean()
+    center_lon = route_coords['longitude'].mean()
+    
+    # Create folium map
+    m = folium.Map(
+        location=[center_lat, center_lon],
+        zoom_start=6,
+        tiles="OpenStreetMap"
+    )
+    
+    # Create feature groups based on delay rate classification
+    route_line_group = folium.FeatureGroup(name="Route Line", show=True)
+    high_delay_group = folium.FeatureGroup(name="High Priority Stations (≥15%)", show=True)
+    medium_delay_group = folium.FeatureGroup(name="Medium Priority Stations (5-15%)", show=True)
+    low_delay_group = folium.FeatureGroup(name="Low Priority Stations (<5%)", show=True)
+    low_traffic_group = folium.FeatureGroup(name="Low Traffic Stations (<100 trains)", show=True)
+    
+    # Add route line connecting all stations
+    route_coordinates = route_coords[['latitude', 'longitude']].values.tolist()
+    
+    if len(route_coordinates) > 1:
+        folium.PolyLine(
+            locations=route_coordinates,
+            color="blue",
+            weight=4,
+            opacity=0.8,
+            tooltip=f"Route: {route_name}"
+        ).add_to(route_line_group)
+    
+    # Add markers for each station based on delay rate classification
+    for idx, row in route_coords.iterrows():
+        order = row['route_order'] + 1  # Human-readable order (1-based)
+        delay_pct = row['delay_percentage']
+        total_trains = row['total_of_trains']
+        
+        # Determine marker style based on delay rate classification
+        if total_trains < 100:
+            color = 'blue'
+            group = low_traffic_group
+            priority = "🔵 Low Traffic"
+            delay_status = f"Low traffic ({total_trains} trains)"
+        elif delay_pct >= 15:
+            color = 'red'
+            group = high_delay_group
+            priority = "🔴 High Priority"
+            delay_status = f"High delay rate ({delay_pct:.1f}%)"
+        elif delay_pct >= 5:
+            color = 'orange'
+            group = medium_delay_group
+            priority = "🟠 Medium Priority"
+            delay_status = f"Medium delay rate ({delay_pct:.1f}%)"
+        else:
+            color = 'green'
+            group = low_delay_group
+            priority = "🟢 Low Priority"
+            delay_status = f"Low delay rate ({delay_pct:.1f}%)"
+        
+        # Determine if this is start/end station for additional context
+        route_position = ""
+        if order == 1:
+            route_position = " (Route Start)"
+        elif order == len(route_coords):
+            route_position = " (Route End)"
+        
+        # Create popup with station and delay information
+        popup_text = f"""
+        <div style="min-width: 250px">
+            <h3>🚂 {row['stationName']}</h3>
+            <hr>
+            <b>Route Position:</b> Stop {order} of {len(route_coords)}{route_position}<br>
+            <b>Station Code:</b> {row['stationShortCode']}<br>
+            <b>Category:</b> {priority}<br>
+            <b>Delay Rate:</b> {delay_pct:.1f}%<br>
+            <b>Total Delays:</b> {row['total_of_delays']:,}<br>
+            <b>Total Trains:</b> {row['total_of_trains']:,}<br>
+            <b>Coordinates:</b> {row['latitude']:.4f}, {row['longitude']:.4f}<br>
+            <hr>
+            <small>{delay_status}</small>
+        </div>
+        """
+        
+        # Create tooltip
+        tooltip_text = f"{row['stationName']} ({order}/{len(route_coords)}) - {delay_status}"
+        
+        # Add marker to appropriate delay category group
+        folium.Marker(
+            location=[row['latitude'], row['longitude']],
+            popup=folium.Popup(popup_text, max_width=300),
+            tooltip=tooltip_text,
+            icon=folium.Icon(color=color, icon="train", prefix="fa")
+        ).add_to(group)
+    
+    # Add direction arrows along the route
+    if len(route_coordinates) > 1:
+        # Add arrows at regular intervals to show direction
+        for i in range(len(route_coordinates) - 1):
+            start_point = route_coordinates[i]
+            end_point = route_coordinates[i + 1]
+            
+            # Calculate midpoint for arrow placement
+            mid_lat = (start_point[0] + end_point[0]) / 2
+            mid_lon = (start_point[1] + end_point[1]) / 2
+            
+            # Add small arrow marker to show direction
+            folium.Marker(
+                location=[mid_lat, mid_lon],
+                icon=folium.DivIcon(
+                    html=f'<div style="font-size: 16px; color: red;">→</div>',
+                    icon_size=(20, 20),
+                    icon_anchor=(10, 10)
+                ),
+                tooltip=f"Direction: Station {i+1} → Station {i+2}"
+            ).add_to(route_line_group)
+    
+    # Add all feature groups to map
+    route_line_group.add_to(m)
+    high_delay_group.add_to(m)
+    medium_delay_group.add_to(m)
+    low_delay_group.add_to(m)
+    low_traffic_group.add_to(m)
+    
+    # Add layer control
+    folium.LayerControl().add_to(m)
+    
+    return m
+
+def create_route_map_plot(df_routes):
+    """Create route map visualization with route selection"""
+    st.subheader("🛤️ Train Route Map")
+    
+    if df_routes is None or df_routes.empty:
+        st.warning("⚠️ No routes data available. Please ensure the `metadata_routes.csv` file exists.")
+        return
+    
+    # Create route options for selectbox
+    route_options = []
+    route_summaries = []
+    
+    for idx, row in df_routes.iterrows():
+        route_stations = parse_route_string(row['route'])
+        if len(route_stations) >= 2:
+            # Create a readable route summary
+            start_station = route_stations[0]
+            end_station = route_stations[-1]
+            num_stations = len(route_stations)
+            
+            # Create a route summary for display
+            if num_stations <= 5:
+                # Show all stations for short routes
+                route_summary = f"{' → '.join(route_stations)}"
+            else:
+                # Show start, end, and total count for long routes
+                route_summary = f"{start_station} → ... → {end_station} ({num_stations} stations)"
+            
+            route_options.append(route_summary)
+            route_summaries.append({
+                'summary': route_summary,
+                'route': row['route'],
+                'start': start_station,
+                'end': end_station,
+                'stations': route_stations,
+                'count': num_stations
+            })
+    
+    if not route_options:
+        st.warning("⚠️ No valid routes found in the dataset.")
+        return
+    
+    # Sort routes by number of stations (longest first)
+    route_summaries.sort(key=lambda x: x['count'], reverse=True)
+    route_options = [r['summary'] for r in route_summaries]
+    
+    # Route selection
+    st.markdown("### 🚂 Select a Train Route")
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        selected_route_summary = st.selectbox(
+            "Choose a route to visualize:",
+            options=route_options,
+            help="Routes are sorted by length (number of stations), longest first"
+        )
+    
+    with col2:
+        st.metric(
+            label="📊 Total Routes Available",
+            value=f"{len(route_options)}"
+        )
+    
+    if selected_route_summary:
+        # Find the selected route data
+        selected_route_data = next(r for r in route_summaries if r['summary'] == selected_route_summary)
+        
+        # Display route information
+        st.markdown("### 📋 Route Information")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("🟢 Start Station", selected_route_data['start'])
+        
+        with col2:
+            st.metric("🔴 End Station", selected_route_data['end'])
+        
+        with col3:
+            st.metric("🚂 Total Stations", f"{selected_route_data['count']}")
+        
+        with col4:
+            # Calculate approximate route length (this is rough estimation)
+            route_coords = get_station_coordinates_for_route(selected_route_data['stations'])
+            if not route_coords.empty and len(route_coords) > 1:
+                # Simple distance calculation (Euclidean, not actual rail distance)
+                total_distance = 0
+                for i in range(len(route_coords) - 1):
+                    lat1, lon1 = route_coords.iloc[i][['latitude', 'longitude']]
+                    lat2, lon2 = route_coords.iloc[i + 1][['latitude', 'longitude']]
+                    # Rough distance calculation (1 degree ≈ 111 km)
+                    distance = ((lat2 - lat1)**2 + (lon2 - lon1)**2)**0.5 * 111
+                    total_distance += distance
+                st.metric("📏 Approx. Distance", f"{total_distance:.0f} km")
+            else:
+                st.metric("📏 Distance", "N/A")
+        
+        # Add information about delay data classification
+        delay_stats_available = os.path.exists("data/viewers/delay_maps/stations_x_delays.csv")
+        if delay_stats_available:
+            st.info("ℹ️ **Route stations are color-coded by delay rate** using the same classification as the Interactive Station Map. Data from previously calculated station delay statistics.")
+        else:
+            st.warning("⚠️ **Delay statistics not available** - Route stations will be shown without delay rate classification. Run 'Calculate Station Delays' first to enable delay-based coloring.")
+        
+        # Get coordinates for the route
+        route_coords = get_station_coordinates_for_route(selected_route_data['stations'])
+        
+        if not route_coords.empty:
+            # Calculate statistics about stations with/without coordinates
+            total_stations_in_route = len(selected_route_data['stations'])
+            stations_with_coords = len(route_coords)
+            missing_coords = total_stations_in_route - stations_with_coords
+            
+            # Display route stations list
+            with st.expander(f"🔍 View All {len(selected_route_data['stations'])} Stations in Route", expanded=False):
+                # Display stations in a nicely formatted way
+                stations_per_row = 4
+                station_rows = [selected_route_data['stations'][i:i + stations_per_row] 
+                              for i in range(0, len(selected_route_data['stations']), stations_per_row)]
+                
+                for i, row_stations in enumerate(station_rows):
+                    cols = st.columns(stations_per_row)
+                    for j, station in enumerate(row_stations):
+                        with cols[j]:
+                            order_num = i * stations_per_row + j + 1
+                            if order_num == 1:
+                                st.markdown(f"**{order_num}.** 🟢 {station}")
+                            elif order_num == len(selected_route_data['stations']):
+                                st.markdown(f"**{order_num}.** 🔴 {station}")
+                            else:
+                                st.markdown(f"**{order_num}.** {station}")
+            
+            # Create and display the map
+            st.markdown("### 🗺️ Route Map")
+            
+            route_map = create_route_map(route_coords, selected_route_summary)
+            
+            if route_map:
+                # Display the map
+                st_folium(route_map, width=None, height=800, returned_objects=[])
+                
+                # Add map legend and information (same as Interactive Station Map)
+                st.markdown("### 🎨 Interactive Map Legend")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("**Delay Rate Categories:**")
+                    st.markdown("🔴 **High Priority**: ≥ 15% delay rate")
+                    st.markdown("🟠 **Medium Priority**: 5-15% delay rate") 
+                    st.markdown("🟢 **Low Priority**: < 5% delay rate")
+                    st.markdown("🔵 **Low Traffic**: < 100 trains (any delay rate)")
+                
+                with col2:
+                    # Calculate category statistics for this route
+                    if 'delay_percentage' in route_coords.columns and 'total_of_trains' in route_coords.columns:
+                        # Check if we actually have delay data
+                        has_delay_data = route_coords['total_of_trains'].sum() > 0
+                        
+                        if has_delay_data:
+                            low_traffic_count = (route_coords['total_of_trains'] < 100).sum()
+                            high_traffic = route_coords[route_coords['total_of_trains'] >= 100]
+                            high_delay_count = (high_traffic['delay_percentage'] >= 15).sum()
+                            medium_delay_count = ((high_traffic['delay_percentage'] >= 5) & (high_traffic['delay_percentage'] < 15)).sum()
+                            low_delay_count = (high_traffic['delay_percentage'] < 5).sum()
+                            
+                            st.markdown("**Station Count by Category:**")
+                            st.markdown(f"🔴 High Priority: {high_delay_count} stations")
+                            st.markdown(f"🟠 Medium Priority: {medium_delay_count} stations")
+                            st.markdown(f"🟢 Low Priority: {low_delay_count} stations")
+                            st.markdown(f"🔵 Low Traffic: {low_traffic_count} stations")
+                        else:
+                            st.markdown("**Route Information:**")
+                            st.markdown(f"📍 **Stations Mapped**: {stations_with_coords}/{total_stations_in_route}")
+                            st.markdown(f"🔵 **Blue Line**: Complete route path")
+                            st.markdown(f"➡️ **Direction Arrows**: Show travel direction")
+                            st.markdown(f"⚠️ **Delay data**: Not available")
+                    else:
+                        st.markdown("**Route Information:**")
+                        st.markdown(f"📍 **Stations Mapped**: {stations_with_coords}/{total_stations_in_route}")
+                        if missing_coords > 0:
+                            st.markdown(f"⚠️ **Missing Coordinates**: {missing_coords} stations")
+                        st.markdown(f"🔵 **Blue Line**: Complete route path")
+                        st.markdown(f"➡️ **Direction Arrows**: Show travel direction")
+                        st.markdown(f"⚠️ **Delay data**: Not available for classification")
+                
+                # Route insights section
+                if 'delay_percentage' in route_coords.columns and 'total_of_trains' in route_coords.columns:
+                    st.markdown("### 🔍 Route Delay Insights")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    # Filter out stations with no train data for insights
+                    stations_with_data = route_coords[route_coords['total_of_trains'] > 0]
+                    
+                    if not stations_with_data.empty:
+                        with col1:
+                            worst_station = stations_with_data.loc[stations_with_data['delay_percentage'].idxmax()]
+                            st.metric(
+                                label="🔴 Highest Delay Rate on Route",
+                                value=f"{worst_station['stationName']}",
+                                delta=f"{worst_station['delay_percentage']:.1f}%"
+                            )
+                        
+                        with col2:
+                            most_delays_station = stations_with_data.loc[stations_with_data['total_of_delays'].idxmax()]
+                            st.metric(
+                                label="📊 Most Total Delays on Route",
+                                value=f"{most_delays_station['stationName']}",
+                                delta=f"{most_delays_station['total_of_delays']:,} delays"
+                            )
+                        
+                        with col3:
+                            busiest_station = stations_with_data.loc[stations_with_data['total_of_trains'].idxmax()]
+                            st.metric(
+                                label="🚂 Busiest Station on Route",
+                                value=f"{busiest_station['stationName']}",
+                                delta=f"{busiest_station['total_of_trains']:,} trains"
+                            )
+                        
+                        # Route delay summary
+                        avg_delay_rate = stations_with_data['delay_percentage'].mean()
+                        total_route_delays = stations_with_data['total_of_delays'].sum()
+                        total_route_trains = stations_with_data['total_of_trains'].sum()
+                        
+                        st.info(f"📊 **Route Summary**: Average delay rate: {avg_delay_rate:.1f}% | Total delays: {total_route_delays:,} | Total trains: {total_route_trains:,}")
+                    else:
+                        st.warning("⚠️ No delay statistics available for stations on this route.")
+                
+                # Show any missing stations
+                if missing_coords > 0:
+                    missing_stations = [station for station in selected_route_data['stations'] 
+                                      if station not in route_coords['stationName'].values]
+                    
+                    with st.expander(f"⚠️ Stations Missing Coordinates ({missing_coords})", expanded=False):
+                        for station in missing_stations:
+                            st.markdown(f"• {station}")
+                        st.info("These stations are not shown on the map due to missing coordinate data.")
+                
+                # Check if delay data is available for classification
+                has_delay_data = 'delay_percentage' in route_coords.columns and route_coords['total_of_trains'].sum() > 0
+                
+                if has_delay_data:
+                    st.success(f"🗺️ Successfully mapped {stations_with_coords} stations with delay rate classification.")
+                else:
+                    st.info(f"🗺️ Successfully mapped {stations_with_coords} stations. Delay statistics not available - stations shown with route position only.")
+                
+            else:
+                st.error("❌ Could not create route map. Please check station coordinate data.")
+        else:
+            st.error("❌ No coordinate data found for stations in this route.")
+
 def load_station_metadata():
     """Load train station metadata and prepare the base dataframe"""
     metadata_path = "data/viewers/metadata/metadata_train_stations.csv"
@@ -375,7 +844,13 @@ def save_results(df_stations):
 
 def create_single_visualization(df_stations, plot_key):
     """Create a single visualization based on the selected plot key"""
-    # Filter to stations with at least some traffic
+    # For route map, we don't need station delay data
+    if plot_key == "route_map":
+        df_routes = load_routes_data()
+        create_route_map_plot(df_routes)
+        return
+    
+    # Filter to stations with at least some traffic for other visualizations
     df_viz = df_stations[df_stations['total_of_trains'] > 0].copy()
     
     if df_viz.empty:
@@ -772,7 +1247,9 @@ def main():
         else:
             st.error("Failed to load station metadata. Please check the file path and format.")
     
-    # SIDEBAR CONFIGURATION - only show if we have data
+    # SIDEBAR CONFIGURATION - only show if we have data OR if routes are available
+    routes_available = load_routes_data() is not None
+    
     if show_visualizations and df_data is not None:
         # Calculate summary metrics for sidebar
         total_stations = len(df_data)
@@ -791,17 +1268,21 @@ def main():
         # SIDEBAR PLOT SELECTION
         st.sidebar.subheader("📈 Chart Selection")
         
-        # Define plot options
+        # Define plot options - add route map if routes are available
         plot_options = {
             "📊 Top Stations by Delays": "top_stations",
             "📋 Data Table Only": "data_only",
             "🗺️ Interactive Station Map": "station_map"
         }
         
+        # Add route map option if routes data is available
+        if routes_available:
+            plot_options["🛤️ Route Map"] = "route_map"
+        
         selected_plot = st.sidebar.radio(
             "Choose visualization:",
             options=list(plot_options.keys()),
-            index=2  # Default to the new interactive map
+            index=2  # Default to the interactive station map
         )
         
         # Get the plot key
@@ -815,9 +1296,22 @@ def main():
             st.subheader("📊 Station Delay Analysis")
             create_single_visualization(df_data, plot_key)
         
-        # Download button
-        st.markdown("---")
-        create_download_button(df_data)
+        # Download button (not shown for route map since it doesn't use delay data)
+        if plot_key != "route_map":
+            st.markdown("---")
+            create_download_button(df_data)
+    
+    elif routes_available and not show_visualizations:
+        # Show route map option even if delay data isn't loaded
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📈 Available Features")
+        st.sidebar.markdown("**🛤️ Route Map**: Available")
+        st.sidebar.markdown("**📊 Delay Analysis**: Load data first")
+        
+        if st.sidebar.button("🛤️ View Route Map"):
+            st.subheader("📊 Train Route Analysis")
+            df_routes = load_routes_data()
+            create_route_map_plot(df_routes)
     
     elif not show_visualizations:
         # Show information when button hasn't been clicked
@@ -831,6 +1325,10 @@ def main():
         
         ⏱️ **Note**: This process may take several minutes depending on the amount of data.
         """)
+        
+        # Show route map availability
+        if routes_available:
+            st.info("🛤️ **Bonus**: Route map visualization is available in the sidebar!")
 
 if __name__ == "__main__":
     main()
