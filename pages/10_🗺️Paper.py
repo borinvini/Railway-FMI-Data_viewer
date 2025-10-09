@@ -70,17 +70,8 @@ if df_stations is not None:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Total Train Stations", f"{len(df_stations):,}")
+        st.metric("Total Train Stations inside Finland", f"{len(df_stations):,}")
     
-    with col2:
-        # Count stations with names
-        stations_with_names = df_stations['stationName'].notna().sum() if 'stationName' in df_stations.columns else 0
-        st.metric("Stations with Names", f"{stations_with_names:,}")
-    
-    with col3:
-        # Get coordinate range
-        lat_range = f"{df_stations['latitude'].min():.2f}° - {df_stations['latitude'].max():.2f}°"
-        st.metric("Latitude Range", lat_range)
     
     # Create a beautiful figure
     fig, ax = plt.subplots(figsize=(14, 16), facecolor='#f5f5f5')
