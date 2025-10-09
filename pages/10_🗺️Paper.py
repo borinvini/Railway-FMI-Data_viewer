@@ -48,13 +48,20 @@ finland.plot(
     linestyle='-'
 )
 
-# Remove axes and grid
-ax.set_xticks([])
-ax.set_yticks([])
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-ax.spines['bottom'].set_visible(False)
-ax.spines['left'].set_visible(False)
+# Add axis labels
+ax.set_xlabel('Longitude', fontsize=12, fontweight='bold', color='#333333')
+ax.set_ylabel('Latitude', fontsize=12, fontweight='bold', color='#333333')
+
+# Style the tick labels
+ax.tick_params(axis='both', labelsize=10, colors='#333333')
+
+# Keep spines visible but styled
+for spine in ax.spines.values():
+    spine.set_edgecolor('#cccccc')
+    spine.set_linewidth(1)
+
+# Make sure grid is off (it should be off by default, but explicitly set it)
+ax.grid(False)
 
 plt.tight_layout()
 st.pyplot(fig)
