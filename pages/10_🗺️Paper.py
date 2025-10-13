@@ -186,10 +186,25 @@ if df_routes is not None:
 if df_stations is not None:
     # Display statistics
     st.markdown("### 📊 Dataset Information")
-    col1, col2, col3 = st.columns(3)
     
-    with col1:
-        st.metric("Total Train Stations inside Finland", f"{len(df_stations):,}")
+    if 'passengerTraffic' in df_stations.columns:
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Train Stations", f"{len(df_stations):,}")
+        
+        with col2:
+            passenger_count = df_stations['passengerTraffic'].sum()
+            st.metric("🔵 Passenger Stations", f"{passenger_count:,}")
+        
+        with col3:
+            non_passenger_count = len(df_stations) - passenger_count
+            st.metric("🔴 Non-Passenger Stations", f"{non_passenger_count:,}")
+    else:
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Train Stations inside Finland", f"{len(df_stations):,}")
     
     
     # Create a beautiful figure
@@ -242,8 +257,8 @@ if df_stations is not None:
                     [lon1, lon2], 
                     [lat1, lat2],
                     color='#4169E1',      # Royal blue
-                    linewidth=0.8,
-                    alpha=0.4,
+                    linewidth=4.0,        # Much thicker lines
+                    alpha=0.6,            # Slightly increased opacity for better visibility
                     zorder=3
                 )
                 connections_drawn += 1
@@ -255,26 +270,55 @@ if df_stations is not None:
             st.info(f"✅ Drew {connections_drawn:,} railway connections on the map. "
                    f"{'⚠️ ' + str(connections_skipped) + ' connections skipped due to missing coordinates.' if connections_skipped > 0 else ''}")
     
-    # Plot train stations
-    ax.scatter(
-        df_stations['longitude'], 
-        df_stations['latitude'],
-        c='#FF4B4B',              # Streamlit red color
-        s=20,                      # Size of markers
-        alpha=0.7,                 # Transparency
-        edgecolors='#8B0000',      # Dark red border
-        linewidths=0.5,            # Border width
-        marker='o',
-        label='Train Stations',
-        zorder=5                   # Ensure stations are on top
-    )
+    # Plot train stations - only show passenger stations (blue)
+    if 'passengerTraffic' in df_stations.columns:
+        # Filter to only show passenger stations
+        passenger_stations = df_stations[df_stations['passengerTraffic'] == True]
+        
+        # Plot only passenger stations in blue
+        ax.scatter(
+            passenger_stations['longitude'], 
+            passenger_stations['latitude'],
+            c='#4169E1',  # Blue color
+            s=35,         # Increased size to match thicker lines
+            alpha=0.8,    # Slightly increased opacity
+            edgecolors='#00008B',  # Dark blue border
+            linewidths=0.8,
+            marker='o',
+            zorder=5
+        )
+        
+        # Show statistics about passenger vs non-passenger stations
+        passenger_count = df_stations['passengerTraffic'].sum()
+        non_passenger_count = len(df_stations) - passenger_count
+        st.info(f"🔵 Passenger Stations Shown: {passenger_count:,} | ⚪ Non-Passenger Stations Hidden: {non_passenger_count:,}")
+    else:
+        # Fallback to original single color if passengerTraffic column doesn't exist
+        ax.scatter(
+            df_stations['longitude'], 
+            df_stations['latitude'],
+            c='#4169E1',
+            s=35,
+            alpha=0.8,
+            edgecolors='#00008B',
+            linewidths=0.8,
+            marker='o',
+            label='Train Stations',
+            zorder=5
+        )
+        st.warning("⚠️ 'passengerTraffic' column not found - showing all stations in blue")
     
     # Add axis labels
     ax.set_xlabel('Longitude', fontsize=14, fontweight='bold', color='#333333')
     ax.set_ylabel('Latitude', fontsize=14, fontweight='bold', color='#333333')
     
-    # Update title to reflect if connections are shown
-    title = f'Finnish Railway Network - {len(df_stations)} Train Stations'
+    # Update title to reflect if connections are shown and passenger-only view
+    if 'passengerTraffic' in df_stations.columns:
+        passenger_count = df_stations['passengerTraffic'].sum()
+        title = f'Finnish Railway Network - {passenger_count} Passenger Stations'
+    else:
+        title = f'Finnish Railway Network - {len(df_stations)} Train Stations'
+    
     if df_graph is not None and connections_drawn > 0:
         title += f' with {connections_drawn} Connections'
     
@@ -289,14 +333,24 @@ if df_stations is not None:
         spine.set_linewidth(1)
     
     # Add legend
-    legend_elements = [
-        plt.Line2D([0], [0], marker='o', color='w', label='Train Stations',
-                  markerfacecolor='#FF4B4B', markersize=8, markeredgecolor='#8B0000')
-    ]
+    legend_elements = []
+    
+    # Add station legend items based on whether passengerTraffic column exists
+    if 'passengerTraffic' in df_stations.columns:
+        # Only show passenger stations in legend since we only plot those
+        legend_elements.append(
+            plt.Line2D([0], [0], marker='o', color='w', label='Passenger Stations',
+                      markerfacecolor='#4169E1', markersize=10, markeredgecolor='#00008B')
+        )
+    else:
+        legend_elements.append(
+            plt.Line2D([0], [0], marker='o', color='w', label='Train Stations',
+                      markerfacecolor='#4169E1', markersize=10, markeredgecolor='#00008B')
+        )
     
     if df_graph is not None and connections_drawn > 0:
         legend_elements.append(
-            plt.Line2D([0], [0], color='#4169E1', linewidth=2, alpha=0.6, label='Railway Connections')
+            plt.Line2D([0], [0], color='#4169E1', linewidth=4, alpha=0.6, label='Railway Connections')
         )
     
     legend = ax.legend(handles=legend_elements, loc='upper right', fontsize=12, framealpha=0.9)
@@ -313,6 +367,10 @@ if df_stations is not None:
     with st.expander("🔍 View Station Details", expanded=False):
         # Display columns for the table
         display_columns = ['stationShortCode', 'stationName', 'latitude', 'longitude']
+        
+        # Add passengerTraffic if it exists
+        if 'passengerTraffic' in df_stations.columns:
+            display_columns.append('passengerTraffic')
         
         # Filter for columns that exist
         available_columns = [col for col in display_columns if col in df_stations.columns]
