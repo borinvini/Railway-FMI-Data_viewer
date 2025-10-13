@@ -23,6 +23,11 @@ This map visualizes Finnish railway passenger stations color-coded by their dela
 - 🟡 **Medium Delay** (5-15% delay rate) - Stations with moderate delays
 - 🟢 **Low Delay** (<5% delay rate) - Stations with good performance
 
+**Railway Connection Colors:**
+- 🟢 **Green**: Low traffic (≤200 trains total) OR both stations have <5% delay
+- 🟡 **Yellow**: At least one station has 5-15% delay (with >200 trains total)
+- 🔴 **Red**: At least one station has ≥15% delay (with >200 trains total)
+
 **Note**: Only passenger stations with ≥100 trains are shown. Delay rate = (total_of_delays / total_of_trains) × 100
 """)
 
@@ -68,6 +73,32 @@ def load_train_stations():
         
     except Exception as e:
         st.error(f"❌ Error loading train stations data: {e}")
+        return None
+
+# Load delay statistics
+@st.cache_data
+def load_delay_statistics():
+    """Load delay statistics for determining line colors"""
+    delay_stats_file = "data/viewers/delay_maps/stations_x_delays.csv"
+    
+    if not os.path.exists(delay_stats_file):
+        st.warning(f"⚠️ Delay statistics file not found at: {delay_stats_file}")
+        return None
+    
+    try:
+        df_delays = pd.read_csv(delay_stats_file)
+        
+        # Calculate delay percentage
+        df_delays['delay_percentage'] = 0.0
+        mask = df_delays['total_of_trains'] > 0
+        df_delays.loc[mask, 'delay_percentage'] = (
+            df_delays.loc[mask, 'total_of_delays'] / df_delays.loc[mask, 'total_of_trains'] * 100
+        )
+        
+        return df_delays
+        
+    except Exception as e:
+        st.error(f"❌ Error loading delay statistics: {e}")
         return None
 
 # Load routes data
@@ -161,11 +192,61 @@ def save_routes_graph(df_graph):
         st.error(f"❌ Error saving routes graph: {e}")
         return False
 
+def get_connection_color(station_1_name, station_2_name, df_stations, df_delays):
+    """
+    Determine the color of a railway connection based on traffic and delay rates.
+    
+    Args:
+        station_1_name: Name of first station
+        station_2_name: Name of second station
+        df_stations: DataFrame with station metadata
+        df_delays: DataFrame with delay statistics
+        
+    Returns:
+        tuple: (color_hex, color_name) or None if data not available
+    """
+    # Create mapping from station name to short code
+    station_name_to_code = dict(zip(df_stations['stationName'], df_stations['stationShortCode']))
+    
+    # Get short codes for both stations
+    code_1 = station_name_to_code.get(station_1_name)
+    code_2 = station_name_to_code.get(station_2_name)
+    
+    if code_1 is None or code_2 is None:
+        return None
+    
+    # Get delay statistics for both stations
+    station_1_data = df_delays[df_delays['stationShortCode'] == code_1]
+    station_2_data = df_delays[df_delays['stationShortCode'] == code_2]
+    
+    if station_1_data.empty or station_2_data.empty:
+        return None
+    
+    # Extract statistics
+    trains_1 = station_1_data['total_of_trains'].iloc[0]
+    trains_2 = station_2_data['total_of_trains'].iloc[0]
+    delay_pct_1 = station_1_data['delay_percentage'].iloc[0]
+    delay_pct_2 = station_2_data['delay_percentage'].iloc[0]
+    
+    total_trains = trains_1 + trains_2
+    max_delay_pct = max(delay_pct_1, delay_pct_2)
+    
+    # Apply color logic - if at least one station exceeds threshold, use that color
+    if total_trains <= 200:
+        return ('#2E8B57', 'green')  # Green - Low traffic
+    elif max_delay_pct < 5:
+        return ('#2E8B57', 'green')  # Green - Both stations low delay
+    elif max_delay_pct < 15:
+        return ('#FFD700', 'yellow')  # Yellow - At least one station medium delay
+    else:
+        return ('#DC143C', 'red')  # Red - At least one station high delay
+
 # Load data
 with st.spinner("Loading map and station data..."):
     finland = load_map()
     df_stations = load_train_stations()
     df_routes = load_routes_data()
+    df_delays = load_delay_statistics()
 
 # Automatically generate and save routes graph when page loads
 df_graph = None
@@ -241,7 +322,7 @@ if df_stations is not None:
     )
     
     # Draw graph connections if available
-    if df_graph is not None:
+    if df_graph is not None and df_delays is not None:
         # Create a dictionary for quick station lookup by name
         station_coords = {}
         for _, station in df_stations.iterrows():
@@ -249,9 +330,10 @@ if df_stations is not None:
             if station_name:
                 station_coords[station_name] = (station['longitude'], station['latitude'])
         
-        # Draw connections
+        # Draw connections with color coding
         connections_drawn = 0
         connections_skipped = 0
+        color_counts = {'green': 0, 'yellow': 0, 'red': 0, 'unknown': 0}
         
         for _, row in df_graph.iterrows():
             station_1_name = row['station_1']
@@ -262,23 +344,72 @@ if df_stations is not None:
                 lon1, lat1 = station_coords[station_1_name]
                 lon2, lat2 = station_coords[station_2_name]
                 
+                # Determine color based on delay statistics
+                color_result = get_connection_color(station_1_name, station_2_name, df_stations, df_delays)
+                
+                if color_result:
+                    color_hex, color_name = color_result
+                    color_counts[color_name] += 1
+                else:
+                    # Default to gray if no delay data
+                    color_hex = '#808080'
+                    color_counts['unknown'] += 1
+                
                 # Draw line between stations
                 ax.plot(
                     [lon1, lon2], 
                     [lat1, lat2],
-                    color='#4169E1',      # Royal blue
-                    linewidth=4.0,        # Much thicker lines
-                    alpha=0.6,            # Slightly increased opacity for better visibility
+                    color=color_hex,
+                    linewidth=4.0,
+                    alpha=0.7,
                     zorder=3
                 )
                 connections_drawn += 1
             else:
                 connections_skipped += 1
         
-        # Show connection statistics
+        # Show connection statistics with color breakdown
         if connections_drawn > 0:
-            st.info(f"✅ Drew {connections_drawn:,} railway connections on the map. "
-                   f"{'⚠️ ' + str(connections_skipped) + ' connections skipped due to missing coordinates.' if connections_skipped > 0 else ''}")
+            st.info(f"✅ Drew {connections_drawn:,} railway connections | "
+                   f"🟢 Green: {color_counts['green']:,} | "
+                   f"🟡 Yellow: {color_counts['yellow']:,} | "
+                   f"🔴 Red: {color_counts['red']:,} | "
+                   f"⚪ Unknown: {color_counts['unknown']:,}"
+                   f"{' | ⚠️ ' + str(connections_skipped) + ' connections skipped' if connections_skipped > 0 else ''}")
+    elif df_graph is not None:
+        # Fallback to single color if no delay data
+        station_coords = {}
+        for _, station in df_stations.iterrows():
+            station_name = station.get('stationName', station.get('stationShortCode', ''))
+            if station_name:
+                station_coords[station_name] = (station['longitude'], station['latitude'])
+        
+        connections_drawn = 0
+        connections_skipped = 0
+        
+        for _, row in df_graph.iterrows():
+            station_1_name = row['station_1']
+            station_2_name = row['station_2']
+            
+            if station_1_name in station_coords and station_2_name in station_coords:
+                lon1, lat1 = station_coords[station_1_name]
+                lon2, lat2 = station_coords[station_2_name]
+                
+                ax.plot(
+                    [lon1, lon2], 
+                    [lat1, lat2],
+                    color='#4169E1',
+                    linewidth=4.0,
+                    alpha=0.6,
+                    zorder=3
+                )
+                connections_drawn += 1
+            else:
+                connections_skipped += 1
+        
+        if connections_drawn > 0:
+            st.warning(f"⚠️ Drew {connections_drawn:,} connections in blue (delay data not available). "
+                      f"{'⚠️ ' + str(connections_skipped) + ' connections skipped.' if connections_skipped > 0 else ''}")
     
     # Plot train stations - color-code based on delay percentage
     if 'passengerTraffic' in df_stations.columns:
@@ -289,23 +420,22 @@ if df_stations is not None:
         delay_stats_file = "data/viewers/delay_maps/stations_x_delays.csv"
         if os.path.exists(delay_stats_file):
             try:
-                df_delays = pd.read_csv(delay_stats_file)
+                df_delays_stations = pd.read_csv(delay_stats_file)
                 
                 # Filter for stations with at least 100 trains
-                df_delays = df_delays[df_delays['total_of_trains'] >= 100].copy()
+                df_delays_stations = df_delays_stations[df_delays_stations['total_of_trains'] >= 100].copy()
                 
                 # Calculate delay percentage
-                df_delays['delay_percentage'] = (df_delays['total_of_delays'] / df_delays['total_of_trains']) * 100
+                df_delays_stations['delay_percentage'] = (df_delays_stations['total_of_delays'] / df_delays_stations['total_of_trains']) * 100
                 
                 # Merge with passenger stations
                 passenger_stations = passenger_stations.merge(
-                    df_delays[['stationShortCode', 'total_of_trains', 'total_of_delays', 'delay_percentage']], 
+                    df_delays_stations[['stationShortCode', 'total_of_trains', 'total_of_delays', 'delay_percentage']], 
                     on='stationShortCode', 
                     how='left'
                 )
                 
                 # Split stations by delay percentage categories
-                # Only categorize stations with traffic data (>=100 trains)
                 high_delay = passenger_stations[passenger_stations['delay_percentage'] >= 15]
                 medium_delay = passenger_stations[(passenger_stations['delay_percentage'] >= 5) & 
                                                  (passenger_stations['delay_percentage'] < 15)]
@@ -317,22 +447,22 @@ if df_stations is not None:
                     ax.scatter(
                         high_delay['longitude'], 
                         high_delay['latitude'],
-                        c='#DC143C',  # Crimson red
+                        c='#DC143C',
                         s=35,
                         alpha=0.8,
-                        edgecolors='#8B0000',  # Dark red border
+                        edgecolors='#8B0000',
                         linewidths=0.8,
                         marker='o',
                         zorder=5
                     )
                     
-                    # Add station name and delay percentage labels for high delay stations
+                    # Add station name and delay percentage labels
                     for _, station in high_delay.iterrows():
                         label_text = f"{station['stationName']} ({station['delay_percentage']:.1f}%)"
                         ax.annotate(
                             label_text,
                             xy=(station['longitude'], station['latitude']),
-                            xytext=(5, 5),  # Offset the text slightly
+                            xytext=(5, 5),
                             textcoords='offset points',
                             fontsize=8,
                             fontweight='bold',
@@ -346,10 +476,10 @@ if df_stations is not None:
                     ax.scatter(
                         medium_delay['longitude'], 
                         medium_delay['latitude'],
-                        c='#FFD700',  # Gold yellow
+                        c='#FFD700',
                         s=35,
                         alpha=0.8,
-                        edgecolors='#DAA520',  # Goldenrod border
+                        edgecolors='#DAA520',
                         linewidths=0.8,
                         marker='o',
                         zorder=5
@@ -360,18 +490,16 @@ if df_stations is not None:
                     ax.scatter(
                         low_delay['longitude'], 
                         low_delay['latitude'],
-                        c='#2E8B57',  # Sea green
+                        c='#2E8B57',
                         s=35,
                         alpha=0.8,
-                        edgecolors='#006400',  # Dark green border
+                        edgecolors='#006400',
                         linewidths=0.8,
                         marker='o',
                         zorder=5
                     )
                 
-                # Show statistics (excluding insufficient data stations)
-                passenger_count = df_stations['passengerTraffic'].sum()
-                non_passenger_count = len(df_stations) - passenger_count
+                # Show statistics
                 stations_shown = len(high_delay) + len(medium_delay) + len(low_delay)
                 st.info(f"🔴 High Delay (≥15%): {len(high_delay):,} | "
                        f"🟡 Medium Delay (5-15%): {len(medium_delay):,} | "
@@ -380,7 +508,6 @@ if df_stations is not None:
                 
             except Exception as e:
                 st.warning(f"⚠️ Could not load delay statistics: {e}. Showing all stations in gray.")
-                # Fallback to gray for all passenger stations
                 ax.scatter(
                     passenger_stations['longitude'], 
                     passenger_stations['latitude'],
@@ -392,12 +519,8 @@ if df_stations is not None:
                     marker='o',
                     zorder=4
                 )
-                passenger_count = df_stations['passengerTraffic'].sum()
-                non_passenger_count = len(df_stations) - passenger_count
-                st.info(f"⚪ Passenger Stations Shown: {passenger_count:,} | Non-Passenger Stations Hidden: {non_passenger_count:,}")
         else:
-            st.warning(f"⚠️ Delay statistics file not found at: {delay_stats_file}. Showing all stations in gray.")
-            # Fallback to gray for all passenger stations
+            st.warning(f"⚠️ Delay statistics file not found. Showing all stations in gray.")
             ax.scatter(
                 passenger_stations['longitude'], 
                 passenger_stations['latitude'],
@@ -409,11 +532,7 @@ if df_stations is not None:
                 marker='o',
                 zorder=4
             )
-            passenger_count = df_stations['passengerTraffic'].sum()
-            non_passenger_count = len(df_stations) - passenger_count
-            st.info(f"⚪ Passenger Stations Shown: {passenger_count:,} | Non-Passenger Stations Hidden: {non_passenger_count:,}")
     else:
-        # Fallback to original single color if passengerTraffic column doesn't exist
         ax.scatter(
             df_stations['longitude'], 
             df_stations['latitude'],
@@ -426,20 +545,17 @@ if df_stations is not None:
             label='Train Stations',
             zorder=4
         )
-        st.warning("⚠️ 'passengerTraffic' column not found - showing all stations in gray")
     
     # Add axis labels
     ax.set_xlabel('Longitude', fontsize=14, fontweight='bold', color='#333333')
     ax.set_ylabel('Latitude', fontsize=14, fontweight='bold', color='#333333')
     
-    # Update title to reflect delay-based categorization
+    # Title
     if 'passengerTraffic' in df_stations.columns:
-        passenger_count = df_stations['passengerTraffic'].sum()
         title = f'Finnish Railway Network'
     else:
         title = f'Finnish Railway Network - {len(df_stations)} Train Stations'
     
-  
     ax.set_title(title, fontsize=16, fontweight='bold', color='#333333', pad=20)
     
     # Style the tick labels
@@ -453,53 +569,32 @@ if df_stations is not None:
     # Add legend
     legend_elements = []
     
-    # Add station legend items based on whether passengerTraffic column exists and delay data
-    if 'passengerTraffic' in df_stations.columns:
-        # Check if delay statistics were loaded successfully
-        delay_stats_file = "data/viewers/delay_maps/stations_x_delays.csv"
-        if os.path.exists(delay_stats_file):
-            try:
-                # If delay data exists, show delay percentage categories (without insufficient data)
-                legend_elements.append(
-                    plt.Line2D([0], [0], marker='o', color='w', label='High Delay (≥15%)',
-                              markerfacecolor='#DC143C', markersize=10, markeredgecolor='#8B0000')
-                )
-                legend_elements.append(
-                    plt.Line2D([0], [0], marker='o', color='w', label='Medium Delay (5-15%)',
-                              markerfacecolor='#FFD700', markersize=10, markeredgecolor='#DAA520')
-                )
-                legend_elements.append(
-                    plt.Line2D([0], [0], marker='o', color='w', label='Low Delay (<5%)',
-                              markerfacecolor='#2E8B57', markersize=10, markeredgecolor='#006400')
-                )
-            except:
-                # Fallback to single color
-                legend_elements.append(
-                    plt.Line2D([0], [0], marker='o', color='w', label='Passenger Stations',
-                              markerfacecolor='#808080', markersize=10, markeredgecolor='#696969')
-                )
-        else:
-            # Fallback to single color if no delay data
-            legend_elements.append(
-                plt.Line2D([0], [0], marker='o', color='w', label='Passenger Stations',
-                          markerfacecolor='#808080', markersize=10, markeredgecolor='#696969')
-            )
-    else:
-        legend_elements.append(
-            plt.Line2D([0], [0], marker='o', color='w', label='Train Stations',
-                      markerfacecolor='#808080', markersize=10, markeredgecolor='#696969')
-        )
+    # Station legend
+    if 'passengerTraffic' in df_stations.columns and os.path.exists("data/viewers/delay_maps/stations_x_delays.csv"):
+        legend_elements.extend([
+            plt.Line2D([0], [0], marker='o', color='w', label='High Delay Station (≥15%)',
+                      markerfacecolor='#DC143C', markersize=10, markeredgecolor='#8B0000'),
+            plt.Line2D([0], [0], marker='o', color='w', label='Medium Delay Station (5-15%)',
+                      markerfacecolor='#FFD700', markersize=10, markeredgecolor='#DAA520'),
+            plt.Line2D([0], [0], marker='o', color='w', label='Low Traffic (<100 Trains) / Low Delay Station (<5%)',
+                      markerfacecolor='#2E8B57', markersize=10, markeredgecolor='#006400')
+                    
+        ])
     
-    if df_graph is not None and connections_drawn > 0:
+    # Connection legend (if we have delay data for connections)
+    if df_graph is not None and df_delays is not None:
+        legend_elements.extend([
+        ])
+    elif df_graph is not None:
         legend_elements.append(
             plt.Line2D([0], [0], color='#4169E1', linewidth=4, alpha=0.6, label='Railway Connections')
         )
     
-    legend = ax.legend(handles=legend_elements, loc='upper right', fontsize=12, framealpha=0.9)
+    legend = ax.legend(handles=legend_elements, loc='upper left', fontsize=11, framealpha=0.9)
     legend.get_frame().set_facecolor('#ffffff')
     legend.get_frame().set_edgecolor('#cccccc')
     
-    # Add grid for better readability
+    # Add grid
     ax.grid(True, alpha=0.2, linestyle='--', linewidth=0.5, color='#666666')
     
     plt.tight_layout()
@@ -507,14 +602,11 @@ if df_stations is not None:
     
     # Optional: Show station details
     with st.expander("🔍 View Station Details", expanded=False):
-        # Display columns for the table
         display_columns = ['stationShortCode', 'stationName', 'latitude', 'longitude']
         
-        # Add passengerTraffic if it exists
         if 'passengerTraffic' in df_stations.columns:
             display_columns.append('passengerTraffic')
         
-        # Filter for columns that exist
         available_columns = [col for col in display_columns if col in df_stations.columns]
         
         if available_columns:
@@ -523,8 +615,6 @@ if df_stations is not None:
                 use_container_width=True,
                 height=400
             )
-        else:
-            st.warning("⚠️ Station details columns not found")
     
     # Download option
     st.markdown("### 💾 Download Data")
@@ -537,7 +627,6 @@ if df_stations is not None:
     )
     
 else:
-    # If no station data, just show the map
     st.warning("⚠️ Train station data not available. Showing only Finland map.")
     
     fig, ax = plt.subplots(figsize=(12, 14), facecolor='#f5f5f5')
