@@ -661,3 +661,256 @@ else:
     
     plt.tight_layout()
     st.pyplot(fig)
+
+# ========== NEW SECTION: TRAIN STATIONS AND EMS MAP ==========
+st.markdown("---")
+st.title("🌦️ Train Stations & Environmental Monitoring Stations")
+
+st.markdown("""
+### Train-EMS Station Connections
+This map visualizes the connection between Finnish railway stations and their closest Environmental Monitoring Stations (EMS) 
+from the Finnish Meteorological Institute (FMI). Weather data from these EMS stations is used for analyzing train operations 
+in different weather conditions.
+
+- 🚂 **Red circles**: Train stations
+- ☁️ **Blue triangles**: EMS (Environmental Monitoring Stations)
+- **Purple dashed lines**: Connections showing which EMS station is closest to each train station
+""")
+
+# Load train-EMS mapping data
+@st.cache_data
+def load_train_ems_mapping():
+    """Load the mapping between train stations and their closest EMS stations, filtered for Finnish passenger stations only"""
+    mapping_file = os.path.join("data/viewers/metadata", "metadata_closest_ems_to_train_stations.csv")
+    stations_file = os.path.join("data/viewers/metadata", "metadata_train_stations.csv")
+    
+    if not os.path.exists(mapping_file):
+        st.error(f"⚠️ Train-EMS mapping file not found at: {mapping_file}")
+        return None
+    
+    try:
+        df_mapping = pd.read_csv(mapping_file)
+        
+        # Load train stations metadata to get countryCode and passengerTraffic
+        if os.path.exists(stations_file):
+            df_stations_meta = pd.read_csv(stations_file)
+            
+            # Filter for Finnish passenger stations only
+            if 'countryCode' in df_stations_meta.columns and 'stationShortCode' in df_stations_meta.columns and 'passengerTraffic' in df_stations_meta.columns:
+                # Get Finnish passenger stations
+                finnish_passenger_stations = df_stations_meta[
+                    (df_stations_meta['countryCode'] == 'FI') & 
+                    (df_stations_meta['passengerTraffic'] == True)
+                ]['stationShortCode'].tolist()
+                
+                initial_count = len(df_mapping)
+                # Filter mapping data to only include Finnish passenger train stations
+                df_mapping = df_mapping[df_mapping['train_station_short_code'].isin(finnish_passenger_stations)]
+                filtered_count = initial_count - len(df_mapping)
+                
+                if filtered_count > 0:
+                    st.info(f"ℹ️ Filtered out {filtered_count} stations. Showing only Finnish passenger stations (countryCode='FI' and passengerTraffic=True)")
+            else:
+                st.warning("⚠️ Required columns not found in train stations metadata. Showing all stations.")
+        else:
+            st.warning(f"⚠️ Train stations metadata file not found at: {stations_file}. Cannot filter by country code or passenger traffic.")
+        
+        return df_mapping
+    except Exception as e:
+        st.error(f"❌ Error loading train-EMS mapping data: {e}")
+        return None
+
+# Load the mapping data
+df_mapping = load_train_ems_mapping()
+
+if df_mapping is not None and not df_mapping.empty:
+    # Display statistics
+    st.markdown("### 📊 Connection Statistics")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total Train Stations", f"{len(df_mapping):,}")
+    
+    with col2:
+        unique_ems = df_mapping['closest_ems_station'].nunique()
+        st.metric("Unique EMS Stations", f"{unique_ems:,}")
+    
+    with col3:
+        avg_distance = df_mapping['distance_km'].mean()
+        st.metric("Average Distance", f"{avg_distance:.1f} km")
+    
+    # Create the EMS map
+    fig_ems, ax_ems = plt.subplots(figsize=(14, 16), facecolor='#f5f5f5')
+    ax_ems.set_facecolor('#ffffff')
+    
+    # Plot Finland base map
+    finland.plot(
+        ax=ax_ems, 
+        color='#d3d3d3',
+        edgecolor='#808080',
+        linewidth=1.5,
+        alpha=0.9
+    )
+    
+    # Add shadow effect
+    finland.plot(
+        ax=ax_ems,
+        color='none',
+        edgecolor='#000000',
+        linewidth=2,
+        alpha=0.15,
+        linestyle='-'
+    )
+    
+    # Draw connection lines between train stations and EMS
+    connections_drawn = 0
+    for _, row in df_mapping.iterrows():
+        train_lat = row['train_lat']
+        train_long = row['train_long']
+        ems_lat = row['ems_latitude']
+        ems_long = row['ems_longitude']
+        
+        # Check if all coordinates are valid
+        if pd.notna(train_lat) and pd.notna(train_long) and pd.notna(ems_lat) and pd.notna(ems_long):
+            ax_ems.plot(
+                [train_long, ems_long],
+                [train_lat, ems_lat],
+                color='purple',
+                linewidth=1.0,
+                alpha=0.3,
+                linestyle='--',
+                zorder=3
+            )
+            connections_drawn += 1
+    
+    # Plot train stations (red circles)
+    ax_ems.scatter(
+        df_mapping['train_long'],
+        df_mapping['train_lat'],
+        c='#DC143C',
+        s=40,
+        alpha=0.8,
+        edgecolors='#8B0000',
+        linewidths=1,
+        marker='o',
+        label='Train Stations',
+        zorder=5
+    )
+    
+    # Plot unique EMS stations (blue triangles)
+    unique_ems_stations = df_mapping.drop_duplicates(subset=['closest_ems_station', 'ems_latitude', 'ems_longitude'])
+    
+    ax_ems.scatter(
+        unique_ems_stations['ems_longitude'],
+        unique_ems_stations['ems_latitude'],
+        c='#4169E1',
+        s=80,
+        alpha=0.8,
+        edgecolors='#00008B',
+        linewidths=1,
+        marker='^',
+        label='EMS Stations',
+        zorder=6
+    )
+    
+    # Add labels and title
+    ax_ems.set_xlabel('Longitude', fontsize=14, fontweight='bold', color='#333333')
+    ax_ems.set_ylabel('Latitude', fontsize=14, fontweight='bold', color='#333333')
+    ax_ems.set_title(
+        f'Finnish Railway Network & Environmental Monitoring Stations\n{len(df_mapping)} Train Stations connected to {unique_ems} EMS Stations',
+        fontsize=16,
+        fontweight='bold',
+        color='#333333',
+        pad=20
+    )
+    
+    # Style tick labels
+    ax_ems.tick_params(axis='both', labelsize=11, colors='#333333')
+    
+    # Style spines
+    for spine in ax_ems.spines.values():
+        spine.set_edgecolor('#cccccc')
+        spine.set_linewidth(1)
+    
+    # Add legend
+    legend_elements = [
+        plt.Line2D([0], [0], marker='o', color='w', label='Train Stations',
+                  markerfacecolor='#DC143C', markersize=10, markeredgecolor='#8B0000'),
+        plt.Line2D([0], [0], marker='^', color='w', label='EMS Stations',
+                  markerfacecolor='#4169E1', markersize=12, markeredgecolor='#00008B'),
+        plt.Line2D([0], [0], color='purple', linewidth=2, alpha=0.5, 
+                  linestyle='--', label='Station Connections')
+    ]
+    
+    legend = ax_ems.legend(handles=legend_elements, loc='upper left', fontsize=11, framealpha=0.9)
+    legend.get_frame().set_facecolor('#ffffff')
+    legend.get_frame().set_edgecolor('#cccccc')
+    
+    # Add grid
+    ax_ems.grid(True, alpha=0.2, linestyle='--', linewidth=0.5, color='#666666')
+    
+    plt.tight_layout()
+    st.pyplot(fig_ems)
+    
+    # Show connection statistics
+    st.info(f"✅ Drew {connections_drawn:,} connection lines between train stations and their closest EMS stations")
+    
+    # Show additional insights
+    st.markdown("### 🔍 Connection Insights")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        closest_pair = df_mapping.loc[df_mapping['distance_km'].idxmin()]
+        st.metric(
+            label="Closest Connection",
+            value=f"{closest_pair['distance_km']:.2f} km",
+            delta=f"{closest_pair['train_station_name']} → {closest_pair['closest_ems_station']}"
+        )
+    
+    with col2:
+        furthest_pair = df_mapping.loc[df_mapping['distance_km'].idxmax()]
+        st.metric(
+            label="Furthest Connection",
+            value=f"{furthest_pair['distance_km']:.2f} km",
+            delta=f"{furthest_pair['train_station_name']} → {furthest_pair['closest_ems_station']}"
+        )
+    
+    with col3:
+        median_distance = df_mapping['distance_km'].median()
+        st.metric(
+            label="Median Distance",
+            value=f"{median_distance:.2f} km"
+        )
+    
+    # Optional: Show detailed mapping data
+    with st.expander("🔍 View Train-EMS Mapping Details", expanded=False):
+        display_cols = [
+            'train_station_name', 'train_station_short_code',
+            'closest_ems_station', 'distance_km',
+            'train_lat', 'train_long', 'ems_latitude', 'ems_longitude'
+        ]
+        
+        available_cols = [col for col in display_cols if col in df_mapping.columns]
+        
+        st.dataframe(
+            df_mapping[available_cols].sort_values('distance_km'),
+            use_container_width=True,
+            height=400
+        )
+    
+    # Download option
+    st.markdown("### 💾 Download Train-EMS Mapping Data")
+    csv_mapping = df_mapping.to_csv(index=False)
+    st.download_button(
+        label="📥 Download Train-EMS Connections CSV",
+        data=csv_mapping,
+        file_name="train_ems_connections.csv",
+        mime="text/csv"
+    )
+
+else:
+    st.warning("⚠️ Train-EMS mapping data not available. Please ensure the metadata file exists.")
+
+# ========== END OF NEW SECTION ==========
