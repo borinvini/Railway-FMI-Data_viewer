@@ -1,5 +1,4 @@
 import numpy as np
-from sklearn.preprocessing import RobustScaler
 import streamlit as st
 import pandas as pd
 import os
@@ -551,7 +550,7 @@ st.title("🌦️ Weather Station Time Series Analysis")
 
 st.markdown("""
 This section displays time series data from an Environmental Monitoring Station (EMS).
-All weather features are normalized using RobustScaler to enable comparison across different scales.
+Each weather feature is displayed in its own subplot with raw, unscaled values.
 """)
 
 # Load weather station data
@@ -578,52 +577,36 @@ def load_weather_data():
         return None
 
 def plot_weather_time_series(df_weather):
-    """Create time series plot for weather features"""
+    """Create time series plot for weather features - Each feature in separate subplot"""
     
-    # Get weather feature columns (exclude timestamp and station_name)
+    # Define the specific features to plot
+    selected_features = ['Air temperature', 'Wind speed', 'Snow depth', 'Horizontal visibility']
+    
+    # Define units for each feature
+    feature_units = {
+        'Air temperature': '°C',
+        'Wind speed': 'm/s',
+        'Snow depth': 'cm',
+        'Horizontal visibility': 'm'
+    }
+    
+    # Get weather feature columns that match our selected features
     weather_features = [col for col in df_weather.columns 
-                       if col not in ['timestamp', 'station_name'] 
-                       and df_weather[col].dtype in ['float64', 'int64']]
+                       if col in selected_features]
     
     if not weather_features:
-        st.warning("No numeric weather features found in the dataset")
+        st.warning("No matching weather features found in the dataset. Looking for: Air temperature, Wind speed, Snow depth, Horizontal visibility")
         return
     
     # Display available features
     st.markdown(f"**Weather Features ({len(weather_features)}):** {', '.join(weather_features)}")
     
-    # Prepare data for scaling
-    # Remove rows where ALL weather features are NaN
+    # Prepare data - Remove rows where ALL weather features are NaN
     df_clean = df_weather.dropna(subset=weather_features, how='all').copy()
     
     if df_clean.empty:
         st.warning("No valid weather data found after removing NaN values")
         return
-    
-    # Extract features for scaling
-    X = df_clean[weather_features].values
-    
-    # Replace any remaining NaN with 0 for scaling
-    X = np.nan_to_num(X, nan=0.0)
-    
-    # Apply RobustScaler to normalize all features to similar range
-    from sklearn.preprocessing import RobustScaler
-    scaler = RobustScaler()
-    X_scaled = scaler.fit_transform(X)
-    
-    # Create a DataFrame with scaled values
-    df_scaled = pd.DataFrame(X_scaled, columns=weather_features, index=df_clean.index)
-    df_scaled['timestamp'] = df_clean['timestamp'].values
-    
-    # Create the plot
-    fig, ax = plt.subplots(figsize=(16, 8))
-    
-    # Plot each weather feature
-    colors = plt.cm.tab20(np.linspace(0, 1, len(weather_features)))
-    
-    for i, feature in enumerate(weather_features):
-        ax.plot(df_scaled['timestamp'], df_scaled[feature], 
-               label=feature, color=colors[i], linewidth=1.5, alpha=0.8)
     
     # Get the date from the first timestamp
     first_date = df_clean['timestamp'].iloc[0].date()
@@ -631,32 +614,67 @@ def plot_weather_time_series(df_weather):
     # Set x-axis limits to show full 24-hour period (00:00 to 00:00 next day)
     start_time = pd.Timestamp(first_date)  # 00:00 of the first date
     end_time = start_time + pd.Timedelta(days=1)  # 00:00 of the next day
-    ax.set_xlim(start_time, end_time)
     
-    # Format x-axis to show only hours and minutes
+    # Calculate number of rows and columns for subplots
+    n_features = len(weather_features)
+    n_cols = 2  # 2 columns
+    n_rows = (n_features + n_cols - 1) // n_cols  # Calculate rows needed
+    
+    # Create subplots
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(16, 4 * n_rows))
+    
+    # Flatten axes array for easier iteration
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+    axes = axes.flatten()
+    
+    # Import matplotlib.dates for formatting
     import matplotlib.dates as mdates
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-    ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))  # Show every 2 hours
     
-    # Rotate x-axis labels for better readability
-    plt.xticks(rotation=45, ha='right')
+    # Generate colors for each feature
+    colors = plt.cm.tab20(np.linspace(0, 1, len(weather_features)))
     
-    # Labels and title
-    ax.set_xlabel('Time (Hour:Minute)', fontsize=12, fontweight='bold')
-    ax.set_ylabel('Scaled Values (RobustScaler)', fontsize=12, fontweight='bold')
-    ax.set_title('Weather Features Time Series - Scaled for Comparison', 
-                fontsize=14, fontweight='bold', pad=20)
+    # Plot each feature in its own subplot
+    for i, feature in enumerate(weather_features):
+        ax = axes[i]
+        
+        # Plot the data with thicker lines
+        ax.plot(df_clean['timestamp'], df_clean[feature], 
+               color=colors[i], linewidth=3.0, alpha=0.8)
+        
+        # Set x-axis limits
+        ax.set_xlim(start_time, end_time)
+        
+        # Format x-axis to show only hours and minutes
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))  # Show every 2 hours
+        
+        # Rotate x-axis labels for better readability
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
+        
+        # Get unit for this feature
+        unit = feature_units.get(feature, '')
+        
+        # Labels and title for each subplot with units
+        ax.set_xlabel('Time (Hour:Minute)', fontsize=10, fontweight='bold')
+        ax.set_ylabel(f'{feature} ({unit})', fontsize=10, fontweight='bold')
+        ax.set_title(f'{feature}', fontsize=11, fontweight='bold', pad=10)
+        
+        # Add grid
+        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
     
-    # Add grid
-    ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.5)
+    # Hide any unused subplots
+    for i in range(n_features, len(axes)):
+        axes[i].set_visible(False)
     
-    # Add legend INSIDE the plot area (upper right corner)
-    ax.legend(loc='upper right', fontsize=9, framealpha=0.9, ncol=2)
+    # Add overall title
+    fig.suptitle('Weather Features Time Series', 
+                fontsize=14, fontweight='bold', y=0.995)
     
     # Tight layout to prevent label cutoff
     plt.tight_layout()
     
-    return fig, df_clean, df_scaled
+    return fig, df_clean
 
 # Load weather data
 with st.spinner("Loading weather station data..."):
@@ -687,11 +705,11 @@ if df_weather is not None:
     # Create and display the time series plot
     st.subheader("📈 Weather Features Time Series")
     
-    with st.spinner("Generating time series plot with RobustScaler normalization..."):
+    with st.spinner("Generating time series plots..."):
         result = plot_weather_time_series(df_weather)
         
         if result:
-            fig, df_clean, df_scaled = result
+            fig, df_clean = result
             
             # Display the plot
             st.pyplot(fig)
@@ -699,32 +717,24 @@ if df_weather is not None:
             # Add explanation
             st.info("""
             📊 **About this plot:**
-            - All weather features are normalized using **RobustScaler** to bring them to a comparable range
-            - RobustScaler uses median and interquartile range, making it robust to outliers
+            - Four key weather features are displayed: Air temperature, Wind speed, Snow depth, and Horizontal visibility
+            - Each feature is displayed in its own subplot
+            - All values are raw, unscaled measurements
             - X-axis shows time in HH:MM format
-            - Different colors represent different weather parameters
             """)
             
             # Display statistics about the data
             st.markdown("---")
             st.subheader("📋 Weather Data Statistics")
             
-            col1, col2 = st.columns(2)
+            st.markdown("**Raw Data Summary**")
+            # Get only the selected features for statistics
+            selected_features = ['Air temperature', 'Wind speed', 'Snow depth', 'Horizontal visibility']
+            available_features = [col for col in selected_features if col in df_clean.columns]
             
-            with col1:
-                st.markdown("**Original Data Summary**")
-                weather_features = [col for col in df_weather.columns 
-                                   if col not in ['timestamp', 'station_name'] 
-                                   and df_weather[col].dtype in ['float64', 'int64']]
+            if available_features:
                 st.dataframe(
-                    df_clean[weather_features].describe().round(2),
-                    use_container_width=True
-                )
-            
-            with col2:
-                st.markdown("**Scaled Data Summary**")
-                st.dataframe(
-                    df_scaled[weather_features].describe().round(2),
+                    df_clean[available_features].describe().round(2),
                     use_container_width=True
                 )
             
