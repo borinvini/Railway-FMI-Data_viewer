@@ -7,10 +7,31 @@ from matplotlib.ticker import FuncFormatter
 import seaborn as sns
 import numpy as np
 import os
+import io
 import glob
 from datetime import datetime
 from ast import literal_eval
 from wordcloud import WordCloud
+
+# IEEE Standard Settings for publication-quality figures
+IEEE_SETTINGS = {
+    'figure.figsize': (3.5, 2.8),  # Double-column width × height (inches)
+    'font.family': 'serif',
+    'font.serif': ['Times New Roman', 'Times', 'DejaVu Serif'],
+    'font.size': 8,  # 8pt for IEEE
+    'axes.labelsize': 8,
+    'axes.titlesize': 8,
+    'xtick.labelsize': 8,
+    'ytick.labelsize': 8,
+    'legend.fontsize': 8,
+    'lines.linewidth': 1.0,  # 1pt for main plot lines
+    'lines.markersize': 3,   # 3pt for markers
+    'grid.linewidth': 0.5,   # 0.5pt for grid lines
+    'axes.linewidth': 0.5,
+    'patch.linewidth': 0.5,
+    'xtick.major.width': 0.5,
+    'ytick.major.width': 0.5,
+}
 
 # Page configuration
 st.set_page_config(
@@ -147,8 +168,30 @@ def get_season(month):
         return 'Autumn'
 
 def plot_aggregated_normalized_delays(monthly_summary, selected_years):
-    """Create visualization for normalized delays aggregated across all selected years"""
-    # Aggregate data across all selected years for each month
+    """
+    Create IEEE-compliant visualization for aggregated normalized delays by month.
+    
+    IEEE Standards Applied:
+    - Font: Times New Roman, 8pt
+    - Figure size: 7.16" × 2.8" (double-column width)
+    - Line width: 1.0pt for main lines
+    - Marker size: 3pt
+    - Grid lines: 0.5pt
+    - No title (use caption below figure)
+    - Reduced alpha on background zones
+    
+    Parameters:
+    -----------
+    monthly_summary : pd.DataFrame
+        DataFrame with monthly delay summary data
+    selected_years : list
+        List of years to include in analysis
+    
+    Returns:
+    --------
+    tuple: (fig, aggregated_data) for display and download functionality
+    """
+    # Aggregate data across all selected years by month
     aggregated_data = monthly_summary.groupby('month').agg({
         'delay_count_by_day': 'sum',
         'total_schedules_by_day': 'sum'
@@ -160,8 +203,8 @@ def plot_aggregated_normalized_delays(monthly_summary, selected_years):
     ) * 100
     
     # Create month labels
-    month_labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+    month_labels = ['1', '2', '3', '4', '5', '6',
+                   '7', '8', '9', '10', '11', '12']
     
     aggregated_data['month_label'] = aggregated_data['month'].map({
         i+1: month_labels[i] for i in range(12)
@@ -170,36 +213,91 @@ def plot_aggregated_normalized_delays(monthly_summary, selected_years):
     # Create dynamic year range string
     year_range = create_year_range_string(selected_years)
     
-    fig, ax = plt.subplots(figsize=(12, 7))
+    # Apply IEEE settings
+    with plt.rc_context(IEEE_SETTINGS):
+        fig, ax = plt.subplots(figsize=(3.5, 2.8))
+        
+        # Create color mapping based on delay percentage values
+        norm = Normalize(
+            aggregated_data['aggregated_delay_percentage'].min(), 
+            aggregated_data['aggregated_delay_percentage'].max()
+        )
+        colors = get_cmap('RdYlGn_r')(norm(aggregated_data['aggregated_delay_percentage']))
+        
+        # Create bar chart with IEEE-compliant styling
+        bars = ax.bar(
+            aggregated_data['month_label'], 
+            aggregated_data['aggregated_delay_percentage'], 
+            color=colors, 
+            alpha=0.8, 
+            edgecolor='black', 
+            linewidth=0.5
+        )
+        
+        # NO TITLE - IEEE figures use captions below
+        # (title removed for IEEE compliance)
+        
+        # Axis labels with IEEE font
+        ax.set_xlabel("Month", fontsize=8, family='serif')
+        ax.set_ylabel("Delay Percentage Normalized (%)", fontsize=8, family='serif')
+
+        # Set y-axis limit to 30%
+        ax.set_ylim(0, 31)
+        
+        # Grid with reduced prominence (0.5pt, reduced alpha)
+        ax.grid(True, alpha=0.2, linewidth=0.5, axis='y', linestyle='-')
+        
+        # Add value labels on bars
+        for bar, percentage in zip(bars, aggregated_data['aggregated_delay_percentage']):
+            height = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width()/2., 
+                height + 0.15,
+                f'{percentage:.1f}',
+                ha='center', 
+                va='bottom', 
+                fontsize=7,  # Slightly smaller for value labels
+                family='serif'
+            )
+        
+        # Format y-axis to show percentage
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x)}%'))
+        
+        # Tick parameters with IEEE line widths
+        ax.tick_params(width=0.5, labelsize=8)
+        
+        # No rotation for x-axis labels
+        plt.xticks(rotation=0)
+        
+        # Tight layout to optimize space
+        plt.tight_layout()
+        
+        return fig, aggregated_data
     
-    # Create color mapping based on delay percentage values (higher delays = warmer colors)
-    norm = Normalize(aggregated_data['aggregated_delay_percentage'].min(), 
-                        aggregated_data['aggregated_delay_percentage'].max())
-    colors = get_cmap('RdYlGn_r')(norm(aggregated_data['aggregated_delay_percentage']))
+def save_figure_as_pdf(fig):
+    """
+    Save matplotlib figure as PDF (IEEE preferred format).
     
-    # Create single bar chart with value-based colors
-    bars = ax.bar(aggregated_data['month_label'], aggregated_data['aggregated_delay_percentage'], 
-                  color=colors, alpha=0.8, edgecolor='black', linewidth=0.5)
+    Parameters:
+    -----------
+    fig : matplotlib.figure.Figure
+        The figure to save
     
-    ax.set_title(f"Aggregated Normalized Delays by Month ({year_range})", 
-                fontsize=16, fontweight='bold')
-    ax.set_xlabel("Month", fontsize=12)
-    ax.set_ylabel("Delay Percentage (%)", fontsize=12)
-    ax.grid(True, alpha=0.3, axis='y')
-    
-    # Add value labels on bars
-    for bar, percentage in zip(bars, aggregated_data['aggregated_delay_percentage']):
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
-                f'{percentage:.1f}%',
-                ha='center', va='bottom', fontweight='bold', fontsize=10)
-    
-    # Format y-axis to show percentage
-    ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{x:.1f}%'))
-    
-    plt.xticks(rotation=0)
-    plt.tight_layout()
-    return fig, aggregated_data
+    Returns:
+    --------
+    bytes : bytes
+        PDF file content as bytes
+    """
+    bytes_io = io.BytesIO()
+    fig.savefig(
+        bytes_io, 
+        format='pdf', 
+        dpi=300,  # High resolution for publication
+        bbox_inches='tight',
+        pad_inches=0.05  # Minimal padding for IEEE
+    )
+    bytes_io.seek(0)
+    return bytes_io.getvalue()
 
 def plot_aggregated_seasonal_delays(monthly_summary, selected_years):
     """Create visualization for normalized delays aggregated across all selected years by season"""
@@ -1137,11 +1235,114 @@ def main():
     st.subheader("📈 Monthly Delay Analysis")
     
     if plot_key == "aggregated_delays":
-        st.markdown(f"### Aggregated Normalized Delays ({year_range})")
-        st.markdown("This chart combines all selected years into a single view, showing the overall delay percentage for each month across the entire selected period.")
+        st.subheader("📊 Monthly Delay Analysis - Aggregated Normalized Delays")
         
+        st.info("""
+        **IEEE Publication Format**: This figure follows IEEE publication standards with:
+        - Times New Roman font at 8pt
+        - 7.16" × 2.8" figure size (double-column width)
+        - Vector format export (PDF) for publication-quality
+        """)
+        
+        # Create IEEE-compliant figure
         fig_agg, aggregated_data = plot_aggregated_normalized_delays(filtered_monthly_summary, selected_years)
+        
+        # Display the figure
         st.pyplot(fig_agg)
+        
+        # Add IEEE-style caption below the figure
+        year_range = create_year_range_string(selected_years)
+        st.caption(
+            f"Fig. 1. Monthly delay analysis showing aggregated normalized delays across {year_range}. "
+            f"Data represents the percentage of trains delayed ≥5 minutes relative to total scheduled "
+            f"trains per month. Color intensity indicates delay severity (green: low delays, red: high delays)."
+        )
+        
+        # Create download buttons for IEEE formats
+        st.markdown("---")
+        st.markdown("### 📥 Download IEEE-Compliant Figure")
+        
+        col1, col2, col3 = st.columns([1, 1, 2])
+        
+        with col1:
+            # PDF download button (IEEE preferred)
+            pdf_bytes = save_figure_as_pdf(fig_agg)
+            st.download_button(
+                label="📄 Download PDF",
+                data=pdf_bytes,
+                file_name=f"delay_analysis_ieee_{year_range}.pdf",
+                mime="application/pdf",
+                help="Download in PDF format (IEEE preferred vector format)",
+                use_container_width=True
+            )
+        
+        with col2:
+            # Also offer CSV data download
+            csv_data = aggregated_data.to_csv(index=False)
+            st.download_button(
+                label="📊 Download Data (CSV)",
+                data=csv_data,
+                file_name=f"delay_analysis_data_{year_range}.csv",
+                mime="text/csv",
+                help="Download the underlying data",
+                use_container_width=True
+            )
+        
+        with col3:
+            st.info("💡 **Tip**: Use PDF for publications. The figure follows IEEE standards for journal submissions.")
+        
+        # Display summary statistics
+        st.markdown("---")
+        st.markdown("### 📈 Aggregated Statistics")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            max_delay_month = aggregated_data.loc[aggregated_data['aggregated_delay_percentage'].idxmax()]
+            st.metric(
+                label="Worst Month",
+                value=max_delay_month['month_label'],
+                delta=f"{max_delay_month['aggregated_delay_percentage']:.1f}%"
+            )
+        
+        with col2:
+            min_delay_month = aggregated_data.loc[aggregated_data['aggregated_delay_percentage'].idxmin()]
+            st.metric(
+                label="Best Month",
+                value=min_delay_month['month_label'],
+                delta=f"{min_delay_month['aggregated_delay_percentage']:.1f}%"
+            )
+        
+        with col3:
+            avg_delay = aggregated_data['aggregated_delay_percentage'].mean()
+            st.metric(
+                label="Average",
+                value=f"{avg_delay:.1f}%"
+            )
+        
+        with col4:
+            total_delays = aggregated_data['delay_count_by_day'].sum()
+            st.metric(
+                label="Total Delays",
+                value=f"{total_delays:,}"
+            )
+        
+        # Show data table (expandable)
+        with st.expander("🔍 View Detailed Monthly Data"):
+            display_df = aggregated_data[['month_label', 'aggregated_delay_percentage', 
+                                          'delay_count_by_day', 'total_schedules_by_day']].copy()
+            display_df.columns = ['Month', 'Delay %', 'Total Delays', 'Total Schedules']
+            st.dataframe(
+                display_df.style.format({
+                    'Delay %': '{:.2f}%',
+                    'Total Delays': '{:,}',
+                    'Total Schedules': '{:,}'
+                }).background_gradient(subset=['Delay %'], cmap='RdYlGn_r'),
+                use_container_width=True
+            )
+        
+        # Close figure to free memory
+        plt.close(fig_agg)
         
     elif plot_key == "total_delays":
         st.markdown("### Total Number of Delays per Month by Year")
