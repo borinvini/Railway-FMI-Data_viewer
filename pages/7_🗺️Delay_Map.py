@@ -173,7 +173,7 @@ def plot_aggregated_normalized_delays(monthly_summary, selected_years):
     
     IEEE Standards Applied:
     - Font: Times New Roman, 8pt
-    - Figure size: 7.16" × 2.8" (double-column width)
+    - Figure size: 3.5" × 2.8" (one-column width)
     - Line width: 1.0pt for main lines
     - Marker size: 3pt
     - Grid lines: 0.5pt
@@ -298,6 +298,192 @@ def save_figure_as_pdf(fig):
     )
     bytes_io.seek(0)
     return bytes_io.getvalue()
+
+def plot_delay_heatmap_ieee(df):
+    """
+    Create an IEEE-compliant heatmap showing delay patterns by day of week and month.
+    
+    IEEE Standards Applied:
+    - Font: Times New Roman, 8pt
+    - Figure size: 3.5" × 2.8" (one-column width)
+    - Line width: 0.5pt for heatmap borders
+    - No title (use caption below figure)
+    - Reduced colorbar label size
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame containing delay data with columns: month, day_of_week, delay_percentage
+    
+    Returns:
+    --------
+    tuple: (fig, heatmap_pivot) for display and download functionality
+    """
+    # Use the predefined day of week mapping
+    day_names = DAY_OF_WEEK_MAPPING
+    
+    # Create pivot table for heatmap
+    heatmap_data = df.groupby(['month', 'day_of_week'])['delay_percentage'].mean().reset_index()
+    heatmap_pivot = heatmap_data.pivot(index='day_of_week', columns='month', values='delay_percentage')
+    
+    # Reorder days of week
+    heatmap_pivot.index = heatmap_pivot.index.map(day_names)
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    heatmap_pivot = heatmap_pivot.reindex(day_order)
+    
+    # Apply IEEE settings
+    with plt.rc_context(IEEE_SETTINGS):
+        fig, ax = plt.subplots(figsize=(3.5, 2.8))
+        
+        # Create heatmap with IEEE-compliant styling
+        sns.heatmap(
+            heatmap_pivot, 
+            annot=True, 
+            fmt='.1f', 
+            cmap='YlOrRd',
+            ax=ax,
+            cbar_kws={
+                'label': 'Avg Delay (%)',
+                'pad': 0.02
+            },
+            linewidths=0.5,
+            linecolor='white',
+            annot_kws={'fontsize': 5}
+        )
+        
+        # NO TITLE - IEEE figures use captions below
+        
+        # Axis labels with IEEE font
+        ax.set_xlabel("Month", fontsize=8, family='serif')
+        ax.set_ylabel("Day of Week", fontsize=8, family='serif')
+        
+        # Set tick parameters
+        ax.tick_params(axis='both', which='major', labelsize=8, width=0.5)
+        
+        # Set month labels
+        month_labels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
+        ax.set_xticklabels(month_labels, rotation=0, fontsize=8, family='serif')
+        ax.set_yticklabels(day_order, rotation=0, fontsize=8, family='serif')
+        
+        # Adjust layout to prevent label cutoff
+        plt.tight_layout()
+    
+    return fig, heatmap_pivot
+
+
+def plot_delay_severity_distribution_ieee(df):
+    """
+    Create an IEEE-compliant visualization showing distribution of delay severity.
+    
+    IEEE Standards Applied:
+    - Font: Times New Roman, 8pt
+    - Figure size: 3.5" × 2.8" (one-column width)
+    - Line width: 1.0pt for bars
+    - Grid lines: 0.5pt
+    - No title (use caption below figure)
+    - Reduced alpha on bars
+    
+    Parameters:
+    -----------
+    df : pd.DataFrame
+        DataFrame containing delay data with column: avg_delay_minutes
+    
+    Returns:
+    --------
+    tuple: (fig, severity_counts) for display and download functionality
+    """
+    # Create delay severity categories (starting from 5 min since delays <5 min are not in dataset)
+    df_copy = df.copy()
+    df_copy['delay_severity'] = pd.cut(
+        df_copy['avg_delay_minutes'],
+        bins=[5, 10, 15, 20, float('inf')],
+        labels=['Low\n(5-10)', 'Medium\n(10-15)', 'High\n(15-20)', 'Very High\n(20+)']
+    )
+    
+    # Apply IEEE settings
+    with plt.rc_context(IEEE_SETTINGS):
+        fig, ax = plt.subplots(figsize=(3.5, 2.8))
+        
+        # Create color palette (removed green since we don't have Very Low category)
+        colors = ['#FFD700', '#FFA500', '#FF4500', '#8B0000']  # gold, orange, red, darkred
+        
+        # Count values and create bar plot
+        severity_counts = df_copy['delay_severity'].value_counts().reindex([
+            'Low\n(5-10)', 'Medium\n(10-15)', 
+            'High\n(15-20)', 'Very High\n(20+)'
+        ])
+        
+        bars = ax.bar(
+            severity_counts.index, 
+            severity_counts.values, 
+            color=colors,
+            alpha=0.8,
+            edgecolor='black',
+            linewidth=0.5
+        )
+        
+        # NO TITLE - IEEE figures use captions below
+        
+        # Axis labels with IEEE font
+        ax.set_xlabel("Delay Severity Category (minutes)", fontsize=8, family='serif')
+        ax.set_ylabel("Number of Days", fontsize=8, family='serif')
+        
+        # Add value labels on bars with smaller font
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width()/2., 
+                height,
+                f'{int(height)}',
+                ha='center', 
+                va='bottom', 
+                fontsize=7,
+                family='serif'
+            )
+        
+        # Grid with IEEE-compliant line width
+        ax.grid(True, alpha=0.3, axis='y', linewidth=0.5)
+        ax.set_axisbelow(True)
+        
+        # Set tick parameters
+        ax.tick_params(axis='both', which='major', labelsize=8, width=0.5)
+        
+        # Adjust layout to prevent label cutoff
+        plt.tight_layout()
+    
+    return fig, severity_counts
+
+
+def create_pdf_download_button(fig, filename, button_label, key):
+    """
+    Create a Streamlit download button for the figure in PDF format.
+    
+    Parameters:
+    -----------
+    fig : matplotlib.figure.Figure
+        The figure to export
+    filename : str
+        Name of the file to download
+    button_label : str
+        Label text for the button
+    key : str
+        Unique key for the Streamlit button
+    """
+    # Create a BytesIO buffer
+    buffer = io.BytesIO()
+    
+    # Save figure to buffer in PDF format
+    fig.savefig(buffer, format='pdf', bbox_inches='tight', dpi=300)
+    buffer.seek(0)
+    
+    # Create download button
+    st.download_button(
+        label=button_label,
+        data=buffer,
+        file_name=filename,
+        mime='application/pdf',
+        key=key
+    )
 
 def plot_aggregated_seasonal_delays(monthly_summary, selected_years):
     """Create visualization for normalized delays aggregated across all selected years by season"""
@@ -1555,13 +1741,29 @@ def main():
         
         # Heatmap
         st.markdown("#### Average Delay Percentage by Day of Week and Month")
-        fig3 = plot_delay_heatmap(df)
+        fig3, heatmap_data = plot_delay_heatmap_ieee(df)
         st.pyplot(fig3)
+        
+        # PDF download button for heatmap
+        create_pdf_download_button(
+            fig3, 
+            f"delay_heatmap_ieee_{datetime.now().strftime('%Y%m%d')}.pdf",
+            "📥 Download Heatmap (PDF)",
+            "download_heatmap_pdf"
+        )
         
         # Delay severity distribution
         st.markdown("#### Distribution of Days by Average Delay Severity")
-        fig4 = plot_delay_severity_distribution(df)
+        fig4, severity_data = plot_delay_severity_distribution_ieee(df)
         st.pyplot(fig4)
+        
+        # PDF download button for severity distribution
+        create_pdf_download_button(
+            fig4,
+            f"delay_severity_ieee_{datetime.now().strftime('%Y%m%d')}.pdf",
+            "📥 Download Severity Distribution (PDF)",
+            "download_severity_pdf"
+        )
     
     # Explanation of normalized delay
     st.info("""
