@@ -298,27 +298,22 @@ if df_stations is not None:
             st.metric("Total Train Stations inside Finland", f"{len(df_stations):,}")
     
     
-    # Create a beautiful figure
-    fig, ax = plt.subplots(figsize=(14, 16), facecolor='#f5f5f5')
+    # Create IEEE-compliant figure (one-column width)
+    fig, ax = plt.subplots(figsize=(14, 16), facecolor='white')
     ax.set_facecolor('#ffffff')
     
-    # Plot Finland with beautiful styling
+    # Configure IEEE font settings
+    plt.rcParams['font.family'] = 'serif'
+    plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
+    plt.rcParams['font.size'] = 8
+
+    # Plot Finland with IEEE styling - white borders
     finland.plot(
         ax=ax, 
         color='#d3d3d3',
-        edgecolor='#808080',
-        linewidth=1.5,
+        edgecolor='black',  # White borders
+        linewidth=1.0,  # 1.0pt line width
         alpha=0.9
-    )
-    
-    # Add a subtle shadow effect
-    finland.plot(
-        ax=ax,
-        color='none',
-        edgecolor='#000000',
-        linewidth=2,
-        alpha=0.15,
-        linestyle='-'
     )
     
     # Draw graph connections if available
@@ -464,7 +459,7 @@ if df_stations is not None:
                             xy=(station['longitude'], station['latitude']),
                             xytext=(5, 5),
                             textcoords='offset points',
-                            fontsize=8,
+                            fontsize=10,
                             fontweight='bold',
                             color='#8B0000',
                             bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='#DC143C', alpha=0.7),
@@ -546,25 +541,19 @@ if df_stations is not None:
             zorder=4
         )
     
-    # Add axis labels
-    ax.set_xlabel('Longitude', fontsize=14, fontweight='bold', color='#333333')
-    ax.set_ylabel('Latitude', fontsize=14, fontweight='bold', color='#333333')
-    
-    # Title
-    if 'passengerTraffic' in df_stations.columns:
-        title = f'Finnish Railway Network'
-    else:
-        title = f'Finnish Railway Network - {len(df_stations)} Train Stations'
-    
-    ax.set_title(title, fontsize=16, fontweight='bold', color='#333333', pad=20)
-    
+    # Add axis labels with IEEE formatting
+    ax.set_xlabel('Longitude', fontsize=10, family='serif')
+    ax.set_ylabel('Latitude', fontsize=10, family='serif')
+
+    # No title - IEEE uses captions below figures
+
     # Style the tick labels
-    ax.tick_params(axis='both', labelsize=11, colors='#333333')
-    
-    # Keep spines visible but styled
+    ax.tick_params(axis='both', labelsize=10, width=0.5)
+
+    # IEEE spine styling
     for spine in ax.spines.values():
-        spine.set_edgecolor('#cccccc')
-        spine.set_linewidth(1)
+        spine.set_edgecolor('white')  # White borders
+        spine.set_linewidth=1.0  # 1.0pt
     
     # Add legend
     legend_elements = []
@@ -741,26 +730,21 @@ if df_mapping is not None and not df_mapping.empty:
         st.metric("Average Distance", f"{avg_distance:.1f} km")
     
     # Create the EMS map
-    fig_ems, ax_ems = plt.subplots(figsize=(14, 16), facecolor='#f5f5f5')
+    fig_ems, ax_ems = plt.subplots(figsize=(14, 16), facecolor='white')
     ax_ems.set_facecolor('#ffffff')
-    
-    # Plot Finland base map
+
+    # Configure IEEE font settings
+    plt.rcParams['font.family'] = 'serif'
+    plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
+    plt.rcParams['font.size'] = 8
+
+    # Plot Finland base map with IEEE styling - white borders
     finland.plot(
         ax=ax_ems, 
         color='#d3d3d3',
-        edgecolor='#808080',
-        linewidth=1.5,
+        edgecolor='black',  # White borders
+        linewidth=1.0,  # 1.0pt line width
         alpha=0.9
-    )
-    
-    # Add shadow effect
-    finland.plot(
-        ax=ax_ems,
-        color='none',
-        edgecolor='#000000',
-        linewidth=2,
-        alpha=0.15,
-        linestyle='-'
     )
     
     # Draw connection lines between train stations and EMS
@@ -814,24 +798,19 @@ if df_mapping is not None and not df_mapping.empty:
         zorder=6
     )
     
-    # Add labels and title
-    ax_ems.set_xlabel('Longitude', fontsize=14, fontweight='bold', color='#333333')
-    ax_ems.set_ylabel('Latitude', fontsize=14, fontweight='bold', color='#333333')
-    ax_ems.set_title(
-        f'Finnish Railway Network & Environmental Monitoring Stations\n{len(df_mapping)} Train Stations connected to {unique_ems} EMS Stations',
-        fontsize=16,
-        fontweight='bold',
-        color='#333333',
-        pad=20
-    )
-    
-    # Style tick labels
-    ax_ems.tick_params(axis='both', labelsize=11, colors='#333333')
-    
-    # Style spines
+    # IEEE axis labels
+    ax_ems.set_xlabel('Longitude', fontsize=10, family='serif')
+    ax_ems.set_ylabel('Latitude', fontsize=10, family='serif')
+
+    # No title - IEEE uses captions below figures
+
+    # IEEE tick styling
+    ax_ems.tick_params(axis='both', labelsize=10, width=0.5)
+
+    # IEEE spine styling
     for spine in ax_ems.spines.values():
-        spine.set_edgecolor('#cccccc')
-        spine.set_linewidth(1)
+        spine.set_edgecolor('white')  # White borders
+        spine.set_linewidth = 1.0  # 1.0pt
     
     # Add legend
     legend_elements = [

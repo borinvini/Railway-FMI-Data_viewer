@@ -360,10 +360,13 @@ def plot_delay_heatmap_ieee(df):
         # Set tick parameters
         ax.tick_params(axis='both', which='major', labelsize=8, width=0.5)
         
+        # Set abbreviated day labels (Mon, Tue, Wed, etc.)
+        day_labels_abbr = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        
         # Set month labels
         month_labels = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
         ax.set_xticklabels(month_labels, rotation=0, fontsize=8, family='serif')
-        ax.set_yticklabels(day_order, rotation=0, fontsize=8, family='serif')
+        ax.set_yticklabels(day_labels_abbr, rotation=0, fontsize=8, family='serif')
         
         # Adjust layout to prevent label cutoff
         plt.tight_layout()
@@ -616,7 +619,7 @@ def plot_delay_heatmap(df):
     
     # Reorder days of week
     heatmap_pivot.index = heatmap_pivot.index.map(day_names)
-    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    day_order = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
     heatmap_pivot = heatmap_pivot.reindex(day_order)
     
     fig, ax = plt.subplots(figsize=(12, 6))
