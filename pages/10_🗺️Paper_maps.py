@@ -1,3 +1,5 @@
+from datetime import datetime
+import io
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
@@ -192,6 +194,42 @@ def save_routes_graph(df_graph):
         st.error(f"❌ Error saving routes graph: {e}")
         return False
 
+def save_figure_to_pdf(fig, filename):
+    """
+    Save a matplotlib figure to PDF format and return as bytes for download
+    
+    Args:
+        fig: Matplotlib figure object
+        filename: Name for the PDF file
+        
+    Returns:
+        BytesIO object containing the PDF data
+    """
+    pdf_buffer = io.BytesIO()
+    fig.savefig(pdf_buffer, format='pdf', dpi=300, bbox_inches='tight')
+    pdf_buffer.seek(0)
+    return pdf_buffer
+
+def create_pdf_download_button(fig, button_label, file_name):
+    """
+    Create a download button for PDF figure
+    
+    Args:
+        fig: Matplotlib figure object
+        button_label: Label for the download button
+        file_name: Name of the PDF file to download
+    """
+    pdf_buffer = save_figure_to_pdf(fig, file_name)
+    
+    st.download_button(
+        label=button_label,
+        data=pdf_buffer,
+        file_name=file_name,
+        mime="application/pdf",
+        key=f"pdf_{file_name}"
+    )
+
+    
 def get_connection_color(station_1_name, station_2_name, df_stations, df_delays):
     """
     Determine the color of a railway connection based on traffic and delay rates.
@@ -299,13 +337,13 @@ if df_stations is not None:
     
     
     # Create IEEE-compliant figure (one-column width)
-    fig, ax = plt.subplots(figsize=(14, 16), facecolor='white')
+    fig, ax = plt.subplots(figsize=(7.16, 16), facecolor='white')
     ax.set_facecolor('#ffffff')
     
     # Configure IEEE font settings
     plt.rcParams['font.family'] = 'serif'
-    plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
-    plt.rcParams['font.size'] = 8
+    #plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
+    plt.rcParams['font.size'] = 16
 
     # Plot Finland with IEEE styling - white borders
     finland.plot(
@@ -420,7 +458,7 @@ if df_stations is not None:
                 # Filter for stations with at least 100 trains
                 df_delays_stations = df_delays_stations[df_delays_stations['total_of_trains'] >= 100].copy()
                 
-                # Calculate delay percentage
+                # Calculate delay percentage    
                 df_delays_stations['delay_percentage'] = (df_delays_stations['total_of_delays'] / df_delays_stations['total_of_trains']) * 100
                 
                 # Merge with passenger stations
@@ -542,13 +580,13 @@ if df_stations is not None:
         )
     
     # Add axis labels with IEEE formatting
-    ax.set_xlabel('Longitude', fontsize=10, family='serif')
-    ax.set_ylabel('Latitude', fontsize=10, family='serif')
+    ax.set_xlabel('Longitude', fontsize=16, family='serif')
+    ax.set_ylabel('Latitude', fontsize=16, family='serif')
 
     # No title - IEEE uses captions below figures
 
     # Style the tick labels
-    ax.tick_params(axis='both', labelsize=10, width=0.5)
+    ax.tick_params(axis='both', labelsize=16, width=0.5)
 
     # IEEE spine styling
     for spine in ax.spines.values():
@@ -579,7 +617,7 @@ if df_stations is not None:
             plt.Line2D([0], [0], color='#4169E1', linewidth=4, alpha=0.6, label='Railway Connections')
         )
     
-    legend = ax.legend(handles=legend_elements, loc='upper left', fontsize=11, framealpha=0.9)
+    legend = ax.legend(handles=legend_elements, loc='upper left', fontsize=16, framealpha=0.9)
     legend.get_frame().set_facecolor('#ffffff')
     legend.get_frame().set_edgecolor('#cccccc')
     
@@ -588,6 +626,15 @@ if df_stations is not None:
     
     plt.tight_layout()
     st.pyplot(fig)
+
+    # PDF Download Button for Map 1
+    st.markdown("### 💾 Download Map as PDF")
+    col_pdf1, col_info1 = st.columns([1, 3])
+    with col_pdf1:
+        create_pdf_download_button(fig, "📥 Download Map 1 (PDF)", f"finland_delay_map_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
+    with col_info1:
+        st.info("📄 High-resolution PDF (300 DPI) suitable for publications")
+    
     
     # Optional: Show station details
     with st.expander("🔍 View Station Details", expanded=False):
@@ -730,13 +777,13 @@ if df_mapping is not None and not df_mapping.empty:
         st.metric("Average Distance", f"{avg_distance:.1f} km")
     
     # Create the EMS map
-    fig_ems, ax_ems = plt.subplots(figsize=(14, 16), facecolor='white')
+    fig_ems, ax_ems = plt.subplots(figsize=(7.16, 16), facecolor='white')
     ax_ems.set_facecolor('#ffffff')
 
     # Configure IEEE font settings
     plt.rcParams['font.family'] = 'serif'
-    plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
-    plt.rcParams['font.size'] = 8
+    #plt.rcParams['font.serif'] = ['Times New Roman', 'Times', 'DejaVu Serif']
+    plt.rcParams['font.size'] = 16
 
     # Plot Finland base map with IEEE styling - white borders
     finland.plot(
@@ -799,13 +846,13 @@ if df_mapping is not None and not df_mapping.empty:
     )
     
     # IEEE axis labels
-    ax_ems.set_xlabel('Longitude', fontsize=10, family='serif')
-    ax_ems.set_ylabel('Latitude', fontsize=10, family='serif')
+    ax_ems.set_xlabel('Longitude', fontsize=16, family='serif')
+    ax_ems.set_ylabel('Latitude', fontsize=16, family='serif')
 
     # No title - IEEE uses captions below figures
 
     # IEEE tick styling
-    ax_ems.tick_params(axis='both', labelsize=10, width=0.5)
+    ax_ems.tick_params(axis='both', labelsize=16, width=0.5)
 
     # IEEE spine styling
     for spine in ax_ems.spines.values():
@@ -822,7 +869,7 @@ if df_mapping is not None and not df_mapping.empty:
                   linestyle='--', label='Station Connections')
     ]
     
-    legend = ax_ems.legend(handles=legend_elements, loc='upper left', fontsize=11, framealpha=0.9)
+    legend = ax_ems.legend(handles=legend_elements, loc='upper left', fontsize=16, framealpha=0.9)
     legend.get_frame().set_facecolor('#ffffff')
     legend.get_frame().set_edgecolor('#cccccc')
     
@@ -831,6 +878,15 @@ if df_mapping is not None and not df_mapping.empty:
     
     plt.tight_layout()
     st.pyplot(fig_ems)
+
+    # PDF Download Button for Map 2
+    st.markdown("### 💾 Download Map as PDF")
+    col_pdf2, col_info2 = st.columns([1, 3])
+    with col_pdf2:
+        create_pdf_download_button(fig_ems, "📥 Download Map 2 (PDF)", f"finland_ems_connections_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf")
+    with col_info2:
+        st.info("📄 High-resolution PDF (300 DPI) suitable for publications")
+    
     
     # Show connection statistics
     st.info(f"✅ Drew {connections_drawn:,} connection lines between train stations and their closest EMS stations")
