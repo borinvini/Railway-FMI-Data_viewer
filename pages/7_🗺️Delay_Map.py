@@ -248,17 +248,17 @@ def plot_aggregated_normalized_delays(monthly_summary, selected_years):
         ax.grid(True, alpha=0.2, linewidth=0.5, axis='y', linestyle='-')
         
         # Add value labels on bars
-        for bar, percentage in zip(bars, aggregated_data['aggregated_delay_percentage']):
-            height = bar.get_height()
-            ax.text(
-                bar.get_x() + bar.get_width()/2., 
-                height + 0.15,
-                f'{percentage:.1f}',
-                ha='center', 
-                va='bottom', 
-                fontsize=7,  # Slightly smaller for value labels
-                family='serif'
-            )
+        #for bar, percentage in zip(bars, aggregated_data['aggregated_delay_percentage']):
+        #    height = bar.get_height()
+        #    ax.text(
+        #        bar.get_x() + bar.get_width()/2., 
+        #        height + 0.15,
+        #        f'{percentage:.1f}',
+        #        ha='center', 
+        #        va='bottom', 
+        #        fontsize=7,  # Slightly smaller for value labels
+        #        family='serif'
+        #    )
         
         # Format y-axis to show percentage
         ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{int(x)}%'))
@@ -338,7 +338,7 @@ def plot_delay_heatmap_ieee(df):
         # Create heatmap with IEEE-compliant styling
         sns.heatmap(
             heatmap_pivot, 
-            annot=True, 
+            annot=False, 
             fmt='.1f', 
             cmap='YlOrRd',
             ax=ax,
@@ -431,18 +431,25 @@ def plot_delay_severity_distribution_ieee(df):
         ax.set_xlabel("Delay Severity Category (minutes)", fontsize=8, family='serif')
         ax.set_ylabel("Number of Days", fontsize=8, family='serif')
         
-        # Add value labels on bars with smaller font
+        # Calculate total for percentage
+        total = severity_counts.sum()
+
+        # Add value labels on bars with smaller font (as percentages)
         for bar in bars:
             height = bar.get_height()
+            percentage = (height / total) * 100
             ax.text(
                 bar.get_x() + bar.get_width()/2., 
                 height,
-                f'{int(height)}',
+                f'{percentage:.1f}%',
                 ha='center', 
                 va='bottom', 
                 fontsize=7,
                 family='serif'
             )
+
+        # Set y-axis limit
+        ax.set_ylim(0, 1400)
         
         # Grid with IEEE-compliant line width
         ax.grid(True, alpha=0.3, axis='y', linewidth=0.5)
